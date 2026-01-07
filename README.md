@@ -96,9 +96,19 @@ A powerful desktop toolkit for VRChat group owners and moderators. Fast login, r
 
 ### 🔍 18+ Badge Scanner
 - Scan entire group for age verification status
-- Filter by verified/unverified
+- Filter by verified/unverified/unknown
+- **Moderation Actions:**
+  - Manual selection with checkboxes
+  - Select All Unverified / Unselect All buttons
+  - Kick Selected members
+  - Kick All Unverified (bulk action)
+  - Rate-limited to 500ms per action
+- **Copy to Clipboard:**
+  - Copy unverified user list
+  - Copy filtered results
+  - Pipe-delimited format (DisplayName|UserID)
 - Export results to CSV
-- Progress tracking
+- Progress tracking with real-time stats
 
 ### ⚡ Kill Switch (Role Removal)
 - Emergency bulk role removal from group members
@@ -114,19 +124,32 @@ A powerful desktop toolkit for VRChat group owners and moderators. Fast login, r
 - Excludes default "Member" role from removal
 
 ### 🔔 Discord Webhooks
-- Configure webhook URL
-- Select which events to notify:
-  - Member joins/leaves
-  - Bans/Unbans
-  - Role changes
-  - Posts created
-  - Events scheduled
-- Test webhook functionality
-- Select/deselect all events
+- Configure webhook URL (supports discord.com and discordapp.com)
+- **Comprehensive Event Notifications:**
+  - **Member Events:** Joins, leaves, updates, role assignments
+  - **Role Events:** Create, update, delete role changes
+  - **Instance Events:** Create, update, delete instances
+  - **Group Events:** Name, description, icon, banner, privacy changes
+  - **Invite & Join Events:** Requests, invites, approvals, rejections
+  - **Announcement Events:** Create, update, delete announcements
+  - **Gallery Events:** Image submissions, approvals, deletions
+  - **Post Events:** Create, update, delete posts
+- **Bulk Controls:**
+  - Select All / Deselect All toggles
+  - Organized by event categories
+- Test webhook connection
+- Rich embed notifications with color coding and emojis
 
 ### ⚙️ Settings
-- Auto-update checks from GitHub releases
+- **Auto-Update System:**
+  - Automatic update checks on startup
+  - Downloads from GitHub releases
+  - One-click update and restart
+  - ZIP-based updates with automatic executable replacement
+- **Startup Options:**
+  - Start with Windows (registry integration)
 - Theme customization
+- Region and timezone settings
 - Local data management
 - About and version info
 
@@ -155,12 +178,13 @@ A powerful desktop toolkit for VRChat group owners and moderators. Fast login, r
 ### Prerequisites
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) or later
 - Windows 10/11
+- Git (optional, for cloning)
 
 ### Quick Build
 ```cmd
 :: Clone the repository
-git clone https://github.com/yourusername/VRCGroupTools.git
-cd VRCGroupTools
+git clone https://github.com/0xE69/VRCGT.git
+cd VRCGT
 
 :: Run the build script
 build.bat
