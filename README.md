@@ -2,7 +2,7 @@
 
 A powerful desktop toolkit for VRChat group owners and moderators. Fast login, rich group insights, member management, posts, calendar events, invites, audit logs, Discord webhooks, and more—all in one modern WPF app.
 
-![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4) ![Windows](https://img.shields.io/badge/Platform-Windows-0078D6) ![License](https://img.shields.io/badge/License-MIT-green) ![Build](https://img.shields.io/github/actions/workflow/status/yourusername/VRCGroupTools/build.yml?branch=main)
+![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4) ![Windows](https://img.shields.io/badge/Platform-Windows-0078D6) ![License](https://img.shields.io/badge/License-MIT-green) ![Build](https://img.shields.io/github/actions/workflow/status/0xE69/VRCGT/build.yml?branch=main)
 
 ---
 
