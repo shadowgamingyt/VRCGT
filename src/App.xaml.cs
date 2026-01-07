@@ -19,7 +19,7 @@ public partial class App : Application
     private static int _handlingException;
 
     public static IServiceProvider Services { get; private set; } = null!;
-    public static string Version => "1.0.1";
+    public static string Version => "1.0.2";
     public static string GitHubRepo => "0xE69/VRCGT";
     public static string BindingLogPath { get; private set; } = string.Empty;
 
