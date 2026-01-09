@@ -99,6 +99,17 @@ public partial class MainViewModel : ObservableObject
         // Sync group ID to badge scanner and API service
         BadgeScannerVM!.GroupId = GroupId;
         _apiService.CurrentGroupId = GroupId;
+        
+        // Auto-refresh group info on load
+        if (!string.IsNullOrWhiteSpace(GroupId))
+        {
+            _ = GroupInfoVM!.RefreshCommand.ExecuteAsync(null);
+            
+            // Start audit log polling automatically (for Discord webhooks)
+            Console.WriteLine("[DEBUG] Auto-starting audit log polling for Discord webhooks...");
+            _ = AuditLogVM!.InitializeAsync();
+        }
+        
         Console.WriteLine("[DEBUG] MainViewModel.Initialize() completed");
     }
 
