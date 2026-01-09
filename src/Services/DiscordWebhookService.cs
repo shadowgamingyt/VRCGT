@@ -26,8 +26,13 @@ public class DiscordWebhookService : IDiscordWebhookService
 
     public async Task<bool> SendMessageAsync(string title, string description, int color, string? thumbnailUrl = null)
     {
+        Console.WriteLine($"[DISCORD] SendMessageAsync called - Title: {title}");
+        
         if (!IsConfigured)
+        {
+            Console.WriteLine($"[DISCORD] Not configured, webhook URL is: {_settingsService.Settings.DiscordWebhookUrl ?? "NULL"}");
             return false;
+        }
 
         try
         {
@@ -53,6 +58,14 @@ public class DiscordWebhookService : IDiscordWebhookService
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync(_settingsService.Settings.DiscordWebhookUrl, content);
+            Console.WriteLine($"[DISCORD] HTTP Status: {response.StatusCode}");
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[DISCORD] Error response: {errorBody}");
+            }
+            
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -101,7 +114,16 @@ public class DiscordWebhookService : IDiscordWebhookService
     // Helper method to send audit log events
     public async Task SendAuditEventAsync(string eventType, string actorName, string? targetName, string? description)
     {
+        Console.WriteLine($"[DISCORD] SendAuditEventAsync called - EventType: {eventType}, IsConfigured: {IsConfigured}");
+        
+        if (!IsConfigured)
+        {
+            Console.WriteLine($"[DISCORD] Webhook not configured, skipping notification");
+            return;
+        }
+        
         var settings = _settingsService.Settings;
+        Console.WriteLine($"[DISCORD] Webhook URL: {settings.DiscordWebhookUrl?.Substring(0, Math.Min(50, settings.DiscordWebhookUrl?.Length ?? 0))}...");
         
         // Check if this event type is enabled
         bool shouldSend = eventType switch
@@ -150,8 +172,13 @@ public class DiscordWebhookService : IDiscordWebhookService
             _ => false
         };
 
+        Console.WriteLine($"[DISCORD] Event type '{eventType}' shouldSend: {shouldSend}");
+        
         if (!shouldSend)
+        {
+            Console.WriteLine($"[DISCORD] Event type '{eventType}' is disabled in settings, skipping");
             return;
+        }
 
         var (title, color, emoji) = eventType switch
         {
@@ -206,6 +233,8 @@ public class DiscordWebhookService : IDiscordWebhookService
         if (!string.IsNullOrEmpty(description))
             desc.AppendLine($"**Details:** {description}");
 
-        await SendMessageAsync($"{emoji} {title}", desc.ToString(), color);
+        Console.WriteLine($"[DISCORD] Sending message: {emoji} {title}");
+        var success = await SendMessageAsync($"{emoji} {title}", desc.ToString(), color);
+        Console.WriteLine($"[DISCORD] Message send result: {success}");
     }
 }

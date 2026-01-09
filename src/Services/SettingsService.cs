@@ -31,11 +31,16 @@ public class SettingsService : ISettingsService
     {
         try
         {
+            Console.WriteLine($"[SETTINGS] Saving to: {_settingsPath}");
             var json = JsonConvert.SerializeObject(Settings, Formatting.Indented);
             File.WriteAllText(_settingsPath, json);
+            Console.WriteLine($"[SETTINGS] Settings saved successfully. Webhook URL: {Settings.DiscordWebhookUrl?.Substring(0, Math.Min(50, Settings.DiscordWebhookUrl?.Length ?? 0))}...");
+            Console.WriteLine($"[SETTINGS] NotifyUserJoins: {Settings.DiscordNotifyUserJoins}");
+            Console.WriteLine($"[SETTINGS] NotifyUserLeaves: {Settings.DiscordNotifyUserLeaves}");
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[SETTINGS] Failed to save settings: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"Failed to save settings: {ex.Message}");
         }
     }
@@ -70,6 +75,21 @@ public class AppSettings
     public string Theme { get; set; } = "Dark";
     public string TimeZoneId { get; set; } = TimeZoneInfo.Local.Id;
     public string DefaultRegion { get; set; } = "US West";
+    
+    // Language & Translation
+    public string Language { get; set; } = "EN";
+    public bool AutoTranslateEnabled { get; set; } = false;
+    
+    // UI Settings
+    public double UIZoom { get; set; } = 1.0;
+    public bool ShowTrayNotificationDot { get; set; } = true;
+    
+    // Application Behavior
+    public bool StartMinimized { get; set; } = false;
+    public bool MinimizeToTray { get; set; } = true;
+    
+    // Update Settings
+    public string UpdateAction { get; set; } = "Notify"; // Off, Notify, Auto Download
     
     // Discord Webhook Settings
     public string? DiscordWebhookUrl { get; set; }

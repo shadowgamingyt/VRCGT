@@ -152,14 +152,28 @@ public class AuditLogService : IAuditLogService, IDisposable
                 Console.WriteLine($"[AUDIT-SVC] Saved {savedCount} new entries (duplicates skipped). Total in DB: {_totalLogCount}");
                 
                 // Send Discord notifications for truly new logs
+                Console.WriteLine($"[AUDIT-SVC] Truly new logs count: {trulyNewLogs.Count}, Discord configured: {_discordService.IsConfigured}");
+                
                 if (trulyNewLogs.Count > 0 && _discordService.IsConfigured)
                 {
-                    Console.WriteLine($"[AUDIT-SVC] Sending {trulyNewLogs.Count} Discord notifications...");
+                    Console.WriteLine($"[AUDIT-SVC] Sending {trulyNewLogs.Count} Discord notifications (max 10)...");
+                    int sent = 0;
                     foreach (var log in trulyNewLogs.Take(10)) // Limit to 10 to avoid spam
                     {
+                        Console.WriteLine($"[AUDIT-SVC] Processing log {sent + 1}: EventType={log.EventType}, Actor={log.ActorName}");
                         await SendDiscordNotificationAsync(log);
+                        sent++;
                         await Task.Delay(500); // Rate limit
                     }
+                    Console.WriteLine($"[AUDIT-SVC] Completed sending {sent} Discord notifications");
+                }
+                else if (trulyNewLogs.Count > 0 && !_discordService.IsConfigured)
+                {
+                    Console.WriteLine($"[AUDIT-SVC] Discord webhook not configured - skipping {trulyNewLogs.Count} notifications");
+                }
+                else if (trulyNewLogs.Count == 0)
+                {
+                    Console.WriteLine($"[AUDIT-SVC] No truly new logs to send to Discord");
                 }
                 
                 // Reload from database and notify

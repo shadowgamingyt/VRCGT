@@ -9,6 +9,7 @@ public partial class DiscordSettingsViewModel : ObservableObject
 {
     private readonly ISettingsService _settingsService;
     private readonly IDiscordWebhookService _discordService;
+    private bool _isLoading = false; // Prevent auto-save during initial load
 
     [ObservableProperty]
     private string _webhookUrl = "";
@@ -124,6 +125,8 @@ public partial class DiscordSettingsViewModel : ObservableObject
 
     private void LoadSettings()
     {
+        _isLoading = true; // Prevent auto-save during load
+        
         var settings = _settingsService.Settings;
         WebhookUrl = settings.DiscordWebhookUrl ?? "";
         
@@ -174,6 +177,8 @@ public partial class DiscordSettingsViewModel : ObservableObject
         PresenceShowRepoButton = settings.DiscordPresenceShowRepoButton;
         
         IsWebhookValid = !string.IsNullOrWhiteSpace(WebhookUrl);
+        
+        _isLoading = false; // Enable auto-save after load
     }
 
     partial void OnWebhookUrlChanged(string value)
@@ -181,6 +186,45 @@ public partial class DiscordSettingsViewModel : ObservableObject
         IsWebhookValid = !string.IsNullOrWhiteSpace(value) && 
                          (value.StartsWith("https://discord.com/api/webhooks/") ||
                           value.StartsWith("https://discordapp.com/api/webhooks/"));
+        AutoSaveSettings();
+    }
+
+    // Auto-save when any notification setting changes
+    partial void OnNotifyUserJoinsChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyUserLeavesChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyUserKickedChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyUserBannedChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyUserUnbannedChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyUserRoleAddChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyUserRoleRemoveChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyRoleCreateChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyRoleUpdateChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyRoleDeleteChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyInstanceCreateChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyInstanceDeleteChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyInstanceOpenedChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyInstanceClosedChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyGroupUpdateChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyInviteCreateChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyInviteAcceptChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyInviteRejectChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyJoinRequestsChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyAnnouncementCreateChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyAnnouncementDeleteChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyGalleryCreateChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyGalleryDeleteChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyPostCreateChanged(bool value) => AutoSaveSettings();
+    partial void OnNotifyPostDeleteChanged(bool value) => AutoSaveSettings();
+    partial void OnPresenceEnabledChanged(bool value) => AutoSaveSettings();
+    partial void OnPresenceAppIdChanged(string value) => AutoSaveSettings();
+    partial void OnPresenceShowRepoButtonChanged(bool value) => AutoSaveSettings();
+
+    private void AutoSaveSettings()
+    {
+        if (_isLoading) return; // Don't save during initial load
+        
+        System.Diagnostics.Debug.WriteLine("[DISCORD-VM] Auto-saving settings...");
+        SaveSettings();
     }
 
     [RelayCommand]
@@ -221,8 +265,10 @@ public partial class DiscordSettingsViewModel : ObservableObject
     [RelayCommand]
     private void SaveSettings()
     {
+        Console.WriteLine("[DISCORD-VM] SaveSettings called");
         var settings = _settingsService.Settings;
         settings.DiscordWebhookUrl = WebhookUrl;
+        Console.WriteLine($"[DISCORD-VM] Saving webhook URL: {WebhookUrl?.Substring(0, Math.Min(50, WebhookUrl?.Length ?? 0))}...");
         
         // User Events
         settings.DiscordNotifyUserJoins = NotifyUserJoins;
@@ -270,7 +316,9 @@ public partial class DiscordSettingsViewModel : ObservableObject
         settings.DiscordPresenceAppId = PresenceAppId;
         settings.DiscordPresenceShowRepoButton = PresenceShowRepoButton;
 
+        Console.WriteLine("[DISCORD-VM] Calling _settingsService.Save()...");
         _settingsService.Save();
+        Console.WriteLine("[DISCORD-VM] Settings saved successfully!");
         StatusMessage = "✅ Settings saved!";
     }
 
