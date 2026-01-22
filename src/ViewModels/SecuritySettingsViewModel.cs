@@ -2,11 +2,13 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using VRCGroupTools.Data.Models;
+using Microsoft.Extensions.DependencyInjection;
 using VRCGroupTools.Services;
+using VRCGroupTools.Data.Models;
+using System.ComponentModel;
+using System.Windows;
 
 namespace VRCGroupTools.ViewModels;
 
@@ -16,35 +18,6 @@ public partial class SecuritySettingsViewModel : ObservableObject
     private readonly ISecurityMonitorService _securityMonitor;
     private readonly IVRChatApiService _apiService;
     private readonly IDiscordWebhookService _discordService;
-
-    [ObservableProperty]
-    private bool _securityMonitoringEnabled;
-
-    [ObservableProperty]
-    private bool _securityAutoRemoveRoles;
-
-    [ObservableProperty]
-    private string? _securityAlertWebhookUrl;
-
-    // Instance kick settings
-    [ObservableProperty]
-    private bool _securityMonitorInstanceKicks;
-
-    [ObservableProperty]
-    private int _securityInstanceKickThreshold;
-
-    [ObservableProperty]
-    private int _securityInstanceKickTimeframeMinutes;
-
-    // Group kick settings
-    [ObservableProperty]
-    private bool _securityMonitorGroupKicks;
-
-    [ObservableProperty]
-    private int _securityGroupKickThreshold;
-
-    [ObservableProperty]
-    private int _securityGroupKickTimeframeMinutes;
 
     // Instance ban settings
     [ObservableProperty]
@@ -127,14 +100,18 @@ public partial class SecuritySettingsViewModel : ObservableObject
         _settingsService = settingsService;
         _securityMonitor = securityMonitor;
         _apiService = apiService;
-        _discordService = discordService;
+        _discord_service = discordService;
 
         LoadSettings();
+
+        // Automatically load recent incidents when the view model is created
+        // Fire-and-forget so constructor doesn't block UI
+        _ = LoadRecentIncidentsAsync();
     }
 
     private void LoadSettings()
     {
-        var settings = _settingsService.Settings;
+        var settings = _settings_service.Settings;
 
         SecurityMonitoringEnabled = settings.SecurityMonitoringEnabled;
         SecurityAutoRemoveRoles = settings.SecurityAutoRemoveRoles;
@@ -171,66 +148,7 @@ public partial class SecuritySettingsViewModel : ObservableObject
         SecurityRequireOwnerRole = settings.SecurityRequireOwnerRole;
         SecurityNotifyDiscord = settings.SecurityNotifyDiscord;
         SecurityLogAllActions = settings.SecurityLogAllActions;
-        SecurityOwnerUserId = settings.SecurityOwnerUserId ?? "";
-    }
-
-    [RelayCommand]
-    private void SaveSettings()
-    {
-        try
-        {
-            var settings = _settingsService.Settings;
-
-            settings.SecurityMonitoringEnabled = SecurityMonitoringEnabled;
-            settings.SecurityAutoRemoveRoles = SecurityAutoRemoveRoles;
-            settings.SecurityAlertWebhookUrl = SecurityAlertWebhookUrl;
-
-            settings.SecurityMonitorInstanceKicks = SecurityMonitorInstanceKicks;
-            settings.SecurityInstanceKickThreshold = SecurityInstanceKickThreshold;
-            settings.SecurityInstanceKickTimeframeMinutes = SecurityInstanceKickTimeframeMinutes;
-
-            settings.SecurityMonitorGroupKicks = SecurityMonitorGroupKicks;
-            settings.SecurityGroupKickThreshold = SecurityGroupKickThreshold;
-            settings.SecurityGroupKickTimeframeMinutes = SecurityGroupKickTimeframeMinutes;
-
-            settings.SecurityMonitorInstanceBans = SecurityMonitorInstanceBans;
-            settings.SecurityInstanceBanThreshold = SecurityInstanceBanThreshold;
-            settings.SecurityInstanceBanTimeframeMinutes = SecurityInstanceBanTimeframeMinutes;
-
-            settings.SecurityMonitorGroupBans = SecurityMonitorGroupBans;
-            settings.SecurityGroupBanThreshold = SecurityGroupBanThreshold;
-            settings.SecurityGroupBanTimeframeMinutes = SecurityGroupBanTimeframeMinutes;
-
-            settings.SecurityMonitorRoleRemovals = SecurityMonitorRoleRemovals;
-            settings.SecurityRoleRemovalThreshold = SecurityRoleRemovalThreshold;
-            settings.SecurityRoleRemovalTimeframeMinutes = SecurityRoleRemovalTimeframeMinutes;
-
-            settings.SecurityMonitorInviteRejections = SecurityMonitorInviteRejections;
-            settings.SecurityInviteRejectionThreshold = SecurityInviteRejectionThreshold;
-            settings.SecurityInviteRejectionTimeframeMinutes = SecurityInviteRejectionTimeframeMinutes;
-
-            settings.SecurityMonitorPostDeletions = SecurityMonitorPostDeletions;
-            settings.SecurityPostDeletionThreshold = SecurityPostDeletionThreshold;
-            settings.SecurityPostDeletionTimeframeMinutes = SecurityPostDeletionTimeframeMinutes;
-
-            settings.SecurityRequireOwnerRole = SecurityRequireOwnerRole;
-            settings.SecurityNotifyDiscord = SecurityNotifyDiscord;
-            settings.SecurityLogAllActions = SecurityLogAllActions;
-            settings.SecurityOwnerUserId = SecurityOwnerUserId;
-
-            _settingsService.Save();
-
-            StatusMessage = "✓ Security settings saved successfully!";
-            LoggingService.Info("SECURITY-UI", "Security settings saved");
-
-            // Clear status after 3 seconds
-            Task.Delay(3000).ContinueWith(_ => StatusMessage = "");
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"✗ Failed to save settings: {ex.Message}";
-            LoggingService.Error("SECURITY-UI", ex, "Failed to save security settings");
-        }
+        SecurityOwnerUserId = settings.SecurityOwnerUserId;
     }
 
     [RelayCommand]
@@ -241,7 +159,7 @@ public partial class SecuritySettingsViewModel : ObservableObject
             IsLoadingIncidents = true;
             RecentIncidents.Clear();
 
-            var groupId = _settingsService.Settings.GroupId;
+            var groupId = _settings_service.Settings.GroupId;
             if (string.IsNullOrEmpty(groupId))
             {
                 StatusMessage = "⚠ Please set a Group ID first";
@@ -252,7 +170,34 @@ public partial class SecuritySettingsViewModel : ObservableObject
 
             foreach (var incident in incidents)
             {
-                RecentIncidents.Add(new SecurityIncidentViewModel(incident, _securityMonitor));
+                var vm = new SecurityIncidentViewModel(incident, _securityMonitor);
+
+                // Remove resolved incidents from the UI when they are marked resolved
+                vm.PropertyChanged += (s, e) =>
+                {
+                    if (e.PropertyName == nameof(vm.IsResolved) && vm.IsResolved)
+                    {
+                        try
+                        {
+                            // Use WPF dispatcher if available
+                            var dispatcher = Application.Current?.Dispatcher;
+                            if (dispatcher != null)
+                            {
+                                dispatcher.Invoke(() => { if (RecentIncidents.Contains(vm)) RecentIncidents.Remove(vm); });
+                            }
+                            else
+                            {
+                                if (RecentIncidents.Contains(vm)) RecentIncidents.Remove(vm);
+                            }
+                        }
+                        catch
+                        {
+                            if (RecentIncidents.Contains(vm)) RecentIncidents.Remove(vm);
+                        }
+                    }
+                };
+
+                RecentIncidents.Add(vm);
             }
 
             StatusMessage = $"Loaded {incidents.Count} recent incidents";
@@ -299,7 +244,7 @@ public partial class SecuritySettingsViewModel : ObservableObject
             var webhookUrl = SecurityAlertWebhookUrl;
             if (string.IsNullOrEmpty(webhookUrl))
             {
-                webhookUrl = _settingsService.Settings.DiscordWebhookUrl;
+                webhookUrl = _settings_service.Settings.DiscordWebhookUrl;
             }
 
             if (string.IsNullOrEmpty(webhookUrl))
@@ -317,7 +262,7 @@ public partial class SecuritySettingsViewModel : ObservableObject
             }
 
             StatusMessage = "Testing webhook...";
-            var result = await _discordService.TestWebhookAsync(webhookUrl);
+            var result = await _discord_service.TestWebhookAsync(webhookUrl);
 
             if (result.Success)
             {
@@ -333,77 +278,6 @@ public partial class SecuritySettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusMessage = $"✗ Error: {ex.Message}";
-        }
-    }
-}
-
-public partial class SecurityIncidentViewModel : ObservableObject
-{
-    private readonly SecurityIncidentEntity _incident;
-    private readonly ISecurityMonitorService _securityMonitor;
-
-    [ObservableProperty]
-    private string _incidentId;
-
-    [ObservableProperty]
-    private string _actorDisplayName;
-
-    [ObservableProperty]
-    private string _actorUserId;
-
-    [ObservableProperty]
-    private string _incidentType;
-
-    [ObservableProperty]
-    private int _actionCount;
-
-    [ObservableProperty]
-    private int _threshold;
-
-    [ObservableProperty]
-    private int _timeframeMinutes;
-
-    [ObservableProperty]
-    private bool _rolesRemoved;
-
-    [ObservableProperty]
-    private bool _discordNotified;
-
-    [ObservableProperty]
-    private DateTime _detectedAt;
-
-    [ObservableProperty]
-    private bool _isResolved;
-
-    [ObservableProperty]
-    private string _details;
-
-    public SecurityIncidentViewModel(SecurityIncidentEntity incident, ISecurityMonitorService securityMonitor)
-    {
-        _incident = incident;
-        _securityMonitor = securityMonitor;
-
-        IncidentId = incident.IncidentId;
-        ActorDisplayName = incident.ActorDisplayName;
-        ActorUserId = incident.ActorUserId;
-        IncidentType = incident.IncidentType;
-        ActionCount = incident.ActionCount;
-        Threshold = incident.Threshold;
-        TimeframeMinutes = incident.TimeframeMinutes;
-        RolesRemoved = incident.RolesRemoved;
-        DiscordNotified = incident.DiscordNotified;
-        DetectedAt = incident.DetectedAt;
-        IsResolved = incident.IsResolved;
-        Details = incident.Details ?? "";
-    }
-
-    [RelayCommand]
-    private async Task ResolveIncidentAsync()
-    {
-        var success = await _securityMonitor.ResolveIncidentAsync(IncidentId);
-        if (success)
-        {
-            IsResolved = true;
         }
     }
 }
