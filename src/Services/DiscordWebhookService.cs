@@ -1,6 +1,13 @@
 using System.Net.Http;
 using System.Text;
+using System.Text;
+using System.Text;
 using Newtonsoft.Json;
+using System;
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using VRCGroupTools.Models;
 
 namespace VRCGroupTools.Services;
 
@@ -10,6 +17,10 @@ public interface IDiscordWebhookService
     Task<WebhookTestResult> TestWebhookAsync(string webhookUrl);
     Task<bool> SendModerationActionAsync(string actionType, string targetName, string actorName, string reason, string? description, DateTime actionTime, DateTime? expiresAt = null, int? infractionCount = null);
     Task<bool> SendWebhookAsync(string webhookUrl, object payload);
+
+    // New: allow audit event sending with optional per-group webhook and group config
+    Task<bool> SendAuditEventAsync(string eventType, string actorName, string? targetName, string? description, string? webhookUrl = null, GroupConfiguration? groupConfig = null);
+
     bool IsConfigured { get; }
 }
 
@@ -25,6 +36,7 @@ public class DiscordWebhookService : IDiscordWebhookService
     private readonly ISettingsService _settingsService;
     private readonly HttpClient _httpClient;
 
+    // Global webhook presence.
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_settingsService.Settings.DiscordWebhookUrl);
 
     public DiscordWebhookService(ISettingsService settingsService)
@@ -36,7 +48,7 @@ public class DiscordWebhookService : IDiscordWebhookService
     public async Task<bool> SendMessageAsync(string title, string description, int color, string? thumbnailUrl = null)
     {
         Console.WriteLine($"[DISCORD] SendMessageAsync called - Title: {title}");
-        
+
         if (!IsConfigured)
         {
             Console.WriteLine("[DISCORD] Not configured, webhook URL is missing");
@@ -52,29 +64,22 @@ public class DiscordWebhookService : IDiscordWebhookService
                 color = color,
                 timestamp = DateTime.UtcNow.ToString("o"),
                 thumbnail = thumbnailUrl != null ? new { url = thumbnailUrl } : null,
-                footer = new
-                {
-                    text = "VRC Group Tools"
-                }
+                footer = new { text = "VRC Group Tools" }
             };
 
-            var payload = new
-            {
-                embeds = new[] { embed }
-            };
-
+            var payload = new { embeds = new[] { embed } };
             var json = JsonConvert.SerializeObject(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync(_settingsService.Settings.DiscordWebhookUrl, content);
             Console.WriteLine($"[DISCORD] HTTP Status: {response.StatusCode}");
-            
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
                 Console.WriteLine($"[DISCORD] Error response: {errorBody}");
             }
-            
+
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -95,23 +100,16 @@ public class DiscordWebhookService : IDiscordWebhookService
             {
                 title = "✅ Webhook Connected!",
                 description = "VRC Group Tools is now connected to this channel.\n\nYou will receive notifications based on your settings.",
-                color = 0x4CAF50, // Green
+                color = 0x4CAF50,
                 timestamp = DateTime.UtcNow.ToString("o"),
-                footer = new
-                {
-                    text = "VRC Group Tools"
-                }
+                footer = new { text = "VRC Group Tools" }
             };
 
-            var payload = new
-            {
-                embeds = new[] { embed }
-            };
-
+            var payload = new { embeds = new[] { embed } };
             var json = JsonConvert.SerializeObject(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
-
             var response = await _httpClient.PostAsync(webhookUrl, content);
+
             if (response.IsSuccessStatusCode)
             {
                 return new WebhookTestResult { Success = true, StatusCode = (int)response.StatusCode };
@@ -134,13 +132,22 @@ public class DiscordWebhookService : IDiscordWebhookService
     public async Task<bool> SendWebhookAsync(string webhookUrl, object payload)
     {
         if (string.IsNullOrWhiteSpace(webhookUrl))
+        {
+            Console.WriteLine("[DISCORD] SendWebhookAsync: webhookUrl is empty");
             return false;
+        }
 
         try
         {
             var json = JsonConvert.SerializeObject(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(webhookUrl, content);
+            Console.WriteLine($"[DISCORD] HTTP Status: {response.StatusCode}");
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[DISCORD] Error response: {errorBody}");
+            }
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -150,77 +157,83 @@ public class DiscordWebhookService : IDiscordWebhookService
         }
     }
 
-    public bool ShouldSendAuditEvent(string eventType)
+    // Prefer per-group toggles when groupConfig is provided; otherwise fall back to global settings.
+    public bool ShouldSendAuditEvent(string eventType, GroupConfiguration? groupConfig = null)
     {
         var settings = _settingsService.Settings;
+        bool useGroup = groupConfig != null;
+
         return eventType switch
         {
             // User Events
-            "group.user.join" => settings.DiscordNotifyUserJoins,
-            "group.user.leave" => settings.DiscordNotifyUserLeaves,
-            "group.user.kick" => settings.DiscordNotifyUserKicked,
-            "group.user.ban" => settings.DiscordNotifyUserBanned,
-            "group.user.unban" => settings.DiscordNotifyUserUnbanned,
-            "group.user.role.add" => settings.DiscordNotifyUserRoleAdd,
-            "group.user.role.remove" => settings.DiscordNotifyUserRoleRemove,
-            "group.user.join_request" => settings.DiscordNotifyJoinRequests,
-            "group.joinRequest" => settings.DiscordNotifyJoinRequests,
+            "group.user.join" => useGroup ? groupConfig!.DiscordNotifyUserJoins : settings.DiscordNotifyUserJoins,
+            "group.user.leave" => useGroup ? groupConfig!.DiscordNotifyUserLeaves : settings.DiscordNotifyUserLeaves,
+            "group.user.kick" => useGroup ? groupConfig!.DiscordNotifyUserKicked : settings.DiscordNotifyUserKicked,
+            "group.user.ban" => useGroup ? groupConfig!.DiscordNotifyUserBanned : settings.DiscordNotifyUserBanned,
+            "group.user.unban" => useGroup ? groupConfig!.DiscordNotifyUserUnbanned : settings.DiscordNotifyUserUnbanned,
+            "group.user.role.add" => useGroup ? groupConfig!.DiscordNotifyRoleAssignments : settings.DiscordNotifyUserRoleAdd,
+            "group.user.role.remove" => useGroup ? groupConfig!.DiscordNotifyRoleAssignments : settings.DiscordNotifyUserRoleRemove,
+            "group.user.join_request" => useGroup ? groupConfig!.DiscordNotifyJoinRequest : settings.DiscordNotifyJoinRequests,
+            "group.joinRequest" => useGroup ? groupConfig!.DiscordNotifyJoinRequest : settings.DiscordNotifyJoinRequests,
 
             // Role Events
-            "group.role.create" => settings.DiscordNotifyRoleCreate,
-            "group.role.update" => settings.DiscordNotifyRoleUpdate,
-            "group.role.delete" => settings.DiscordNotifyRoleDelete,
+            "group.role.create" => useGroup ? groupConfig!.DiscordNotifyRoleCreate : settings.DiscordNotifyRoleCreate,
+            "group.role.update" => useGroup ? groupConfig!.DiscordNotifyRoleUpdate : settings.DiscordNotifyRoleUpdate,
+            "group.role.delete" => useGroup ? groupConfig!.DiscordNotifyRoleDelete : settings.DiscordNotifyRoleDelete,
 
             // Instance Events
-            "group.instance.create" => settings.DiscordNotifyInstanceCreate,
-            "group.instance.delete" => settings.DiscordNotifyInstanceDelete,
-            "group.instance.open" => settings.DiscordNotifyInstanceOpened,
-            "group.instance.close" => settings.DiscordNotifyInstanceClosed,
-            "group.instance.warn" => settings.DiscordNotifyInstanceWarn,
+            "group.instance.create" => useGroup ? groupConfig!.DiscordNotifyInstanceCreate : settings.DiscordNotifyInstanceCreate,
+            "group.instance.delete" => useGroup ? groupConfig!.DiscordNotifyInstanceDelete : settings.DiscordNotifyInstanceDelete,
+            "group.instance.open" => useGroup ? groupConfig!.DiscordNotifyInstanceOpened : settings.DiscordNotifyInstanceOpened,
+            "group.instance.close" => useGroup ? groupConfig!.DiscordNotifyInstanceClosed : settings.DiscordNotifyInstanceClosed,
+            "group.instance.warn" => useGroup ? groupConfig!.DiscordNotifyInstanceWarn : settings.DiscordNotifyInstanceWarn,
 
             // Group Events
-            "group.update" => settings.DiscordNotifyGroupUpdate,
+            "group.update" => useGroup ? groupConfig!.DiscordNotifyGroupUpdate : settings.DiscordNotifyGroupUpdate,
 
             // Invite Events
-            "group.invite.create" => settings.DiscordNotifyInviteCreate,
-            "group.user.invite" => settings.DiscordNotifyInviteCreate,
-            "group.invite.accept" => settings.DiscordNotifyInviteAccept,
-            "group.invite.reject" => settings.DiscordNotifyInviteReject,
+            "group.invite.create" => useGroup ? groupConfig!.DiscordNotifyInviteSent : settings.DiscordNotifyInviteCreate,
+            "group.user.invite" => useGroup ? groupConfig!.DiscordNotifyInviteSent : settings.DiscordNotifyInviteCreate,
+            "group.invite.accept" => useGroup ? groupConfig!.DiscordNotifyJoinApproval : settings.DiscordNotifyInviteAccept,
+            "group.invite.reject" => useGroup ? groupConfig!.DiscordNotifyJoinRejection : settings.DiscordNotifyInviteReject,
 
             // Announcement Events
-            "group.announcement.create" => settings.DiscordNotifyAnnouncementCreate,
-            "group.announcement.delete" => settings.DiscordNotifyAnnouncementDelete,
+            "group.announcement.create" => useGroup ? groupConfig!.DiscordNotifyAnnouncementCreate : settings.DiscordNotifyAnnouncementCreate,
+            "group.announcement.delete" => useGroup ? groupConfig!.DiscordNotifyAnnouncementDelete : settings.DiscordNotifyAnnouncementDelete,
 
             // Gallery Events
-            "group.gallery.create" => settings.DiscordNotifyGalleryCreate,
-            "group.gallery.delete" => settings.DiscordNotifyGalleryDelete,
+            "group.gallery.create" => useGroup ? groupConfig!.DiscordNotifyGalleryImageSubmitted : settings.DiscordNotifyGalleryCreate,
+            "group.gallery.delete" => useGroup ? groupConfig!.DiscordNotifyGalleryImageDeleted : settings.DiscordNotifyGalleryDelete,
 
             // Post Events
-            "group.post.create" => settings.DiscordNotifyPostCreate,
-            "group.post.delete" => settings.DiscordNotifyPostDelete,
+            "group.post.create" => useGroup ? groupConfig!.DiscordNotifyPostCreate : settings.DiscordNotifyPostCreate,
+            "group.post.delete" => useGroup ? groupConfig!.DiscordNotifyPostDelete : settings.DiscordNotifyPostDelete,
 
             _ => false
         };
     }
 
-    // Helper method to send audit log events
-    public async Task<bool> SendAuditEventAsync(string eventType, string actorName, string? targetName, string? description)
+    // Send audit event using resolved webhook (explicit -> group -> global) and per-group toggles
+    public async Task<bool> SendAuditEventAsync(string eventType, string actorName, string? targetName, string? description, string? webhookUrl = null, GroupConfiguration? groupConfig = null)
     {
-        Console.WriteLine($"[DISCORD] SendAuditEventAsync called - EventType: {eventType}, IsConfigured: {IsConfigured}");
-        
-        if (!IsConfigured)
+        // Resolve webhook to use
+        string? resolvedWebhook = webhookUrl;
+        if (string.IsNullOrWhiteSpace(resolvedWebhook))
+            resolvedWebhook = groupConfig?.DiscordWebhookUrl;
+        if (string.IsNullOrWhiteSpace(resolvedWebhook))
+            resolvedWebhook = _settingsService.Settings.DiscordWebhookUrl;
+
+        Console.WriteLine($"[DISCORD] SendAuditEventAsync called - EventType: {eventType}, ResolvedWebhookSet: {!string.IsNullOrWhiteSpace(resolvedWebhook)}");
+
+        if (string.IsNullOrWhiteSpace(resolvedWebhook))
         {
-            Console.WriteLine($"[DISCORD] Webhook not configured, skipping notification");
+            Console.WriteLine($"[DISCORD] Webhook not configured (no global or group webhook), skipping notification");
             return false;
         }
-        
-        Console.WriteLine("[DISCORD] Webhook URL configured: true");
-        
-        // Check if this event type is enabled
-        bool shouldSend = ShouldSendAuditEvent(eventType);
 
+        bool shouldSend = ShouldSendAuditEvent(eventType, groupConfig);
         Console.WriteLine($"[DISCORD] Event type '{eventType}' shouldSend: {shouldSend}");
-        
+
         if (!shouldSend)
         {
             Console.WriteLine($"[DISCORD] Event type '{eventType}' is disabled in settings, skipping");
@@ -229,121 +242,43 @@ public class DiscordWebhookService : IDiscordWebhookService
 
         var (title, color, emoji) = eventType switch
         {
-            // User Events
             "group.user.join" => ("Member Joined", 0x4CAF50, "👋"),
             "group.user.leave" => ("Member Left", 0x9E9E9E, "🚪"),
             "group.user.kick" => ("Member Kicked", 0xFF9800, "👢"),
             "group.user.ban" => ("Member Banned", 0xF44336, "🔨"),
             "group.user.unban" => ("Member Unbanned", 0x4CAF50, "✅"),
             "group.user.role.add" => ("Role Added", 0x9C27B0, "➕"),
-            "group.user.role.remove" => ("Role Removed", 0xFF5722, "➖"),
-            "group.user.join_request" => ("Join Request", 0x7C4DFF, "📥"),
-            "group.joinRequest" => ("Join Request", 0x7C4DFF, "📥"),
-            
-            // Role Events
-            "group.role.create" => ("Role Created", 0x00BCD4, "🎭"),
-            "group.role.update" => ("Role Updated", 0x9C27B0, "🏷️"),
-            "group.role.delete" => ("Role Deleted", 0xF44336, "🗑️"),
-            
-            // Instance Events
-            "group.instance.create" => ("Instance Created", 0x03A9F4, "🌍"),
-            "group.instance.delete" => ("Instance Deleted", 0x9E9E9E, "🚫"),
-            "group.instance.open" => ("Instance Opened", 0x2196F3, "🌐"),
-            "group.instance.close" => ("Instance Closed", 0x9E9E9E, "🔒"),
-            "group.instance.warn" => ("Instance Warning Issued", 0xFFC107, "⚠️"),
-            
-            // Group Events
-            "group.update" => ("Group Updated", 0xFFC107, "⚙️"),
-            
-            // Invite Events
+            "group.user.role.remove" => ("Role Removed", 0x9C27B0, "➖"),
+            "group.user.join_request" => ("Join Request", 0x03A9F4, "✉️"),
             "group.invite.create" => ("Invite Sent", 0x8BC34A, "💌"),
-            "group.user.invite" => ("Invite Sent", 0x8BC34A, "💌"),
             "group.invite.accept" => ("Invite Accepted", 0x4CAF50, "✔️"),
             "group.invite.reject" => ("Invite Rejected", 0xFF5722, "❌"),
-            
-            // Announcement Events
             "group.announcement.create" => ("Announcement Posted", 0xFF9800, "📢"),
             "group.announcement.delete" => ("Announcement Deleted", 0x757575, "🗑️"),
-            
-            // Gallery Events
-            "group.gallery.create" => ("Gallery Item Added", 0xE91E63, "🖼️"),
-            "group.gallery.delete" => ("Gallery Item Removed", 0x9E9E9E, "🗑️"),
-            
-            // Post Events
-            "group.post.create" => ("Post Created", 0x2196F3, "📝"),
-            "group.post.delete" => ("Post Deleted", 0x757575, "🗑️"),
-            
-            _ => ("Event", 0x757575, "📋")
+            _ => ("Notification", 0x607D8B, "🔔")
         };
 
         var desc = new StringBuilder();
-        desc.AppendLine($"**Actor:** {actorName}");
-        if (!string.IsNullOrEmpty(targetName))
+        if (!string.IsNullOrWhiteSpace(actorName))
+            desc.AppendLine($"**Actor:** {actorName}");
+        if (!string.IsNullOrWhiteSpace(targetName))
             desc.AppendLine($"**Target:** {targetName}");
         if (!string.IsNullOrEmpty(description))
             desc.AppendLine($"**Details:** {description}");
 
         Console.WriteLine($"[DISCORD] Sending message: {emoji} {title}");
-        var success = await SendMessageAsync($"{emoji} {title}", desc.ToString(), color);
+        var embed = new
+        {
+            title = $"{emoji} {title}",
+            description = desc.ToString(),
+            color = color,
+            timestamp = DateTime.UtcNow.ToString("o"),
+            footer = new { text = "VRC Group Tools" }
+        };
+
+        var payload = new { embeds = new[] { embed } };
+        var success = await SendWebhookAsync(resolvedWebhook!, payload);
         Console.WriteLine($"[DISCORD] Message send result: {success}");
         return success;
-    }
-    
-    // Helper method to send moderation action notifications with timestamps
-    public async Task<bool> SendModerationActionAsync(
-        string actionType,
-        string targetName,
-        string actorName,
-        string reason,
-        string? description,
-        DateTime actionTime,
-        DateTime? expiresAt = null,
-        int? infractionCount = null)
-    {
-        if (!IsConfigured)
-        {
-            return false;
-        }
-        
-        var (title, color, emoji) = actionType.ToLower() switch
-        {
-            "warning" => ("User Warned", 0xFFC107, "⚠️"),
-            "kick" => ("User Kicked", 0xFF9800, "👢"),
-            "ban" => ("User Banned", 0xF44336, "🔨"),
-            _ => ("Moderation Action", 0x757575, "📋")
-        };
-        
-        var desc = new StringBuilder();
-        desc.AppendLine($"**Target:** {targetName}");
-        desc.AppendLine($"**Moderator:** {actorName}");
-        desc.AppendLine($"**Reason:** {reason}");
-        
-        if (!string.IsNullOrEmpty(description))
-        {
-            desc.AppendLine($"**Details:** {description}");
-        }
-        
-        // Add Discord timestamp for action time
-        var unixTime = ((DateTimeOffset)actionTime).ToUnixTimeSeconds();
-        desc.AppendLine($"**Time:** <t:{unixTime}:F>");
-        
-        // Add expiration if provided
-        if (expiresAt.HasValue)
-        {
-            var expiryUnixTime = ((DateTimeOffset)expiresAt.Value).ToUnixTimeSeconds();
-            desc.AppendLine($"**Expires:** <t:{expiryUnixTime}:R>");
-        }
-        else if (actionType.ToLower() == "ban")
-        {
-            desc.AppendLine($"**Duration:** Permanent");
-        }
-        
-        // Add infraction count if provided
-        if (infractionCount.HasValue && infractionCount.Value > 0)
-        {
-            desc.AppendLine($"**Previous Infractions:** {infractionCount.Value}");
-        }
-        
-        return await SendMessageAsync($"{emoji} {title}", desc.ToString(), color);
     }
 }
