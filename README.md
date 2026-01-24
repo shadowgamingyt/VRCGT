@@ -38,7 +38,18 @@ A powerful desktop toolkit for VRChat group owners and moderators. Fast login, r
 - Quick "Use" button to select user
 - One-click invite sending
 
-### 📅 Calendar Events
+### 📬 Inviter Hub (New!)
+- **Instance Inviter**: Detect users in your current VRChat instance and invite them to your group.
+    - Filter by Trust Level (Visitor, New User, User, Known, Trusted).
+    - **18+ Only Filter**: Only show users with confirmed 18+ age verification.
+    - "Select All" and bulk invite capabilities.
+- **Friend Inviter**: Quickly invite your online friends to your group.
+- **Join Requests**: Monitor and process group join requests.
+    - Filter requests by 18+ status (age verification check).
+    - Approve or block users directly.
+    - View user details and profile pictures.
+
+### �📅 Calendar Events
 - Create and manage group events
 - **Event Options:**
   - Title, description, category
@@ -314,6 +325,21 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ---
 
 ## 📋 Changelog
+
+### v1.1.0 (2026-01-24)
+**📬 Inviter Hub & Moderation**
+
+**New Features:**
+- **Inviter Hub**: Centralized tab for all recruiting tools.
+  - **Instance Inviter**: Detect and invite users from your current VRChat instance. Includes 18+ filtering.
+  - **Friend Inviter**: Bulk invite online friends.
+  - **Join Requests**: Manage group requests with new 18+ verification filters.
+- **Profile Viewer**: Click on any user in search/lists to view their full profile (Bio, Status, Badges).
+- **18+ Filters**: Added verified 18+ filtering to Instance Inviter, Friend Inviter, and Join Requests.
+
+**Improvements:**
+- UI Tweaks for better readability.
+- Performance improvements in API scanning.
 
 ### v1.0.7 (2026-01-15)
 **🔧 Stability & Caching**

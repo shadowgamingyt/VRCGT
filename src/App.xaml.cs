@@ -25,7 +25,7 @@ public partial class App : Application
     private static extern bool FreeConsole();
 
     public static IServiceProvider Services { get; private set; } = null!;
-    public static string Version => "1.0.5";
+    public static string Version => "1.1.0";
     public static string GitHubRepo => "0xE69/VRCGT";
     public static string BindingLogPath { get; private set; } = string.Empty;
 
@@ -259,6 +259,11 @@ public partial class App : Application
         services.AddTransient<InviteToGroupViewModel>();
         services.AddTransient<KillSwitchViewModel>();
         services.AddTransient<AppSettingsViewModel>();
+        services.AddSingleton<IInstanceInviterService, InstanceInviterService>();
+        services.AddTransient<InstanceInviterViewModel>();
+        services.AddTransient<FriendInviterViewModel>();
+        services.AddTransient<InviterHubViewModel>();
+        services.AddTransient<GroupJoinRequestsViewModel>();
         
         LoggingService.Debug("APP", "All services registered");
     }
