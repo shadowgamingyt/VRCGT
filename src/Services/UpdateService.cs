@@ -103,15 +103,16 @@ public class UpdateService : IUpdateService
             var batchPath = Path.Combine(Path.GetTempPath(), "VRCGroupTools_Update.bat");
             var batchContent = "@echo off\n" +
                 "echo Updating VRC Group Tools...\n" +
-                "timeout /t 2 /nobreak >nul\n" +
+                "echo Waiting for application to exit...\n" +
+                ":retry_loop\n" +
+                "timeout /t 1 /nobreak >nul\n" +
                 $"copy /Y \"{newExePath}\" \"{currentExePath}\"\n" +
                 "if errorlevel 1 (\n" +
-                "    echo Update failed!\n" +
-                "    pause\n" +
-                "    exit /b 1\n" +
+                "    echo File locked, retrying in 1 second...\n" +
+                "    goto retry_loop\n" +
                 ")\n" +
                 "echo Update complete!\n" +
-                "timeout /t 1 /nobreak >nul\n" +
+                "timeout /t 2 /nobreak >nul\n" +
                 $"start \"\" \"{currentExePath}\"\n" +
                 $"rd /s /q \"{tempDir}\"\n" +
                 $"del \"{zipPath}\"\n" +
@@ -122,10 +123,11 @@ public class UpdateService : IUpdateService
             // Launch the batch script and close the app
             Process.Start(new ProcessStartInfo
             {
-                FileName = batchPath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
+                FileName = "cmd.exe",
+                Arguments = $"/c \"{batchPath}\"",
+                UseShellExecute = true,
+                CreateNoWindow = false,
+                WindowStyle = ProcessWindowStyle.Normal
             });
 
             System.Windows.Application.Current.Shutdown();
