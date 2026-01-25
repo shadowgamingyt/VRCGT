@@ -59,6 +59,12 @@ public partial class InstanceInviterViewModel : ObservableObject
     private bool _skipKnown;
 
     [ObservableProperty]
+    private bool _skipJustJoined;
+
+    [ObservableProperty]
+    private int _minInstanceTimeSeconds = 60;
+
+    [ObservableProperty]
     private string? _statusMessage;
 
     [ObservableProperty]
@@ -125,6 +131,18 @@ public partial class InstanceInviterViewModel : ObservableObject
     }
     
     partial void OnSkipKnownChanged(bool value)
+    {
+        ApplyFilters();
+        ApplyInstanceUserFilters();
+    }
+
+    partial void OnSkipJustJoinedChanged(bool value)
+    {
+        ApplyFilters();
+        ApplyInstanceUserFilters();
+    }
+
+    partial void OnMinInstanceTimeSecondsChanged(int value)
     {
         ApplyFilters();
         ApplyInstanceUserFilters();
@@ -255,6 +273,13 @@ public partial class InstanceInviterViewModel : ObservableObject
                 return false;
             if (SkipKnown && u.TrustLevel == "Known User")
                 return false;
+
+            if (SkipJustJoined)
+            {
+                var duration = DateTime.Now - u.User.JoinTime;
+                if (u.User.JoinTime != DateTime.MinValue && duration.TotalSeconds < MinInstanceTimeSeconds)
+                    return false;
+            }
 
             return true;
         });
@@ -635,6 +660,27 @@ public partial class InstanceUserViewModel : ObservableObject
     partial void OnIsSelectedChanged(bool value)
     {
         _parent.UpdateInstanceUserSelectedCount();
+    }
+
+    public string TimeInInstance
+    {
+        get
+        {
+            if (User.JoinTime == DateTime.MinValue)
+                return "Unknown";
+                
+            var duration = DateTime.Now - User.JoinTime;
+            
+            if (duration.TotalSeconds < 0) 
+                return "Just joined";
+
+            if (duration.TotalSeconds < 60)
+                return $"{duration.Seconds}s";
+            if (duration.TotalMinutes < 60)
+                return $"{duration.Minutes}m {duration.Seconds}s";
+            
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        }
     }
 
     public string? TrustLevel

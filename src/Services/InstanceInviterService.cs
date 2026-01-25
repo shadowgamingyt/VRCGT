@@ -218,6 +218,7 @@ public class InstanceInviterService : IInstanceInviterService
             var userIdPattern = new Regex(@"usr_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}");
             var onPlayerJoinedPattern = new Regex(@"OnPlayerJoined\s+(.+?)(?:\s*$)", RegexOptions.Compiled);
             var playerJoinedPattern = new Regex(@"\[Player\]\s+(.+?)\s+joined", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            var timestampRegex = new Regex(@"^(\d{4}\.\d{2}\.\d{2}\s\d{2}:\d{2}:\d{2})", RegexOptions.Compiled);
             
             // Search from newest to oldest to find current instance boundary
             foreach (var line in lines)
@@ -254,13 +255,22 @@ public class InstanceInviterService : IInstanceInviterService
                         var userIdMatch = userIdPattern.Match(line);
                         var userId = userIdMatch.Success ? userIdMatch.Value : string.Empty;
                         
+                        // Extract timestamp
+                        var timestampMatch = timestampRegex.Match(line);
+                        var joinTime = DateTime.MinValue;
+                        if (timestampMatch.Success) 
+                        {
+                            DateTime.TryParseExact(timestampMatch.Groups[1].Value, "yyyy.MM.dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out joinTime);
+                        }
+
                         // Only add if not already in list
                         if (!string.IsNullOrEmpty(displayName) && !users.Any(u => u.DisplayName == displayName))
                         {
                             users.Add(new InstanceUser
                             {
                                 DisplayName = displayName,
-                                UserId = userId
+                                UserId = userId,
+                                JoinTime = joinTime
                             });
                             Console.WriteLine($"[INSTANCE-USERS] Found user: {displayName} ({userId})");
                         }
@@ -275,12 +285,21 @@ public class InstanceInviterService : IInstanceInviterService
                     {
                         var displayName = match.Groups[1].Value.Trim();
                         
+                        // Extract timestamp
+                        var timestampMatch = timestampRegex.Match(line);
+                        var joinTime = DateTime.MinValue;
+                        if (timestampMatch.Success) 
+                        {
+                            DateTime.TryParseExact(timestampMatch.Groups[1].Value, "yyyy.MM.dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out joinTime);
+                        }
+
                         if (!string.IsNullOrEmpty(displayName) && !users.Any(u => u.DisplayName == displayName))
                         {
                             users.Add(new InstanceUser
                             {
                                 DisplayName = displayName,
-                                UserId = string.Empty // Try to find ID in nearby lines
+                                UserId = string.Empty, // Try to find ID in nearby lines
+                                JoinTime = joinTime
                             });
                             Console.WriteLine($"[INSTANCE-USERS] Found user from [Player] log: {displayName}");
                         }
@@ -331,4 +350,5 @@ public class InstanceUser
     public string ProfilePicUrl { get; set; } = string.Empty;
     public bool IsAgeVerified { get; set; }
     public List<string> Tags { get; set; } = new();
+    public DateTime JoinTime { get; set; }
 }

@@ -95,6 +95,25 @@
                                  IsChecked="{Binding SkipKnown}"
                                  Foreground="White"
                                  Margin="0,0,20,10"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,20,10">
+                            <CheckBox Content="Min Time in Instance:" 
+                                     IsChecked="{Binding SkipJustJoined}"
+                                     ToolTip="Skip users who haven't been in the instance long enough"
+                                     Foreground="White"
+                                     VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding MinInstanceTimeSeconds, UpdateSourceTrigger=PropertyChanged}" 
+                                    IsEnabled="{Binding SkipJustJoined}"
+                                    Style="{StaticResource MaterialDesignTextBox}"
+                                    Width="40"
+                                    Margin="5,0,0,0"
+                                    Foreground="White"
+                                    VerticalAlignment="Center"
+                                    HorizontalContentAlignment="Center"/>
+                            <TextBlock Text="sec" 
+                                      Foreground="#AAA" 
+                                      VerticalAlignment="Center" 
+                                      Margin="5,0,0,0"/>
+                        </StackPanel>
                     </WrapPanel>
 
                     <!-- Auto Invite Toggle -->
@@ -224,6 +243,19 @@
                                                       Foreground="#666" 
                                                       FontSize="10" 
                                                       Margin="0,3,0,0"/>
+                                        </StackPanel>
+
+                                        <!-- Time Tracker -->
+                                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="10,0,0,0">
+                                            <TextBlock Text="⏱️ Time in Instance" 
+                                                      Foreground="#888" 
+                                                      FontSize="10"
+                                                      HorizontalAlignment="Right"/>
+                                            <TextBlock Text="{Binding TimeInInstance}" 
+                                                      Foreground="White" 
+                                                      FontSize="13"
+                                                      FontWeight="SemiBold"
+                                                      HorizontalAlignment="Right"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
