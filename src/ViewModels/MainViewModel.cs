@@ -375,6 +375,41 @@ public partial class MainViewModel : ObservableObject
             Console.WriteLine("[DEBUG] Refreshing GroupJoinRequestsVM...");
             _ = GroupJoinRequestsVM.RefreshCommand.ExecuteAsync(null);
         }
+
+        // Load GroupPosts when switching to it
+        if (module == "GroupPosts" && GroupPostsVM != null && GroupPostsVM.Posts.Count == 0)
+        {
+            Console.WriteLine("[DEBUG] Loading GroupPostsVM...");
+            _ = GroupPostsVM.LoadPostsCommand.ExecuteAsync(null);
+        }
+
+        // Load Members from cache when switching to it
+        if (module == "Members" && MembersListVM != null && MembersListVM.Members.Count == 0)
+        {
+            Console.WriteLine("[DEBUG] Loading MembersListVM from cache...");
+            _ = MembersListVM.LoadFromCacheCommand.ExecuteAsync(null);
+        }
+
+        // Load Bans from cache when switching to Ban Management
+        if (module == "BanManagement" && BansListVM != null && BansListVM.Bans.Count == 0)
+        {
+            Console.WriteLine("[DEBUG] Loading BansListVM from cache...");
+            _ = BansListVM.LoadFromCacheCommand.ExecuteAsync(null);
+        }
+
+        // Load Members from cache when switching to it
+        if (module == "Members" && MembersListVM != null && MembersListVM.Members.Count == 0)
+        {
+            Console.WriteLine("[DEBUG] Loading MembersListVM from cache...");
+            _ = MembersListVM.LoadFromCacheCommand.ExecuteAsync(null);
+        }
+
+        // Load Bans from cache when switching to Ban Management
+        if (module == "Bans" && BansListVM != null && BansListVM.Bans.Count == 0)
+        {
+            Console.WriteLine("[DEBUG] Loading BansListVM from cache...");
+            _ = BansListVM.LoadFromCacheCommand.ExecuteAsync(null);
+        }
     }
 
     [RelayCommand]

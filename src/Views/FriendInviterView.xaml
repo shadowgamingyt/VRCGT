@@ -18,66 +18,72 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+        <StackPanel Grid.Row="0" Margin="0,0,0,15">
             <TextBlock Text="👥 Friend Manager" 
-                      FontSize="28" 
+                      FontSize="24" 
                       FontWeight="Bold" 
                       Foreground="White"/>
-            <TextBlock Text="View your VRChat friends list, manage connections, and see who's online" 
+            <TextBlock Text="Select friends to invite to your group" 
                       Foreground="#888" 
-                      FontSize="14" 
+                      FontSize="13" 
                       Margin="0,5,0,0"/>
         </StackPanel>
 
         <!-- Search and Filters -->
-        <Border Grid.Row="1" Background="#2D2D30" CornerRadius="8" Padding="20" Margin="0,0,0,15">
+        <Border Grid.Row="1" Background="#2D2D30" CornerRadius="8" Padding="15" Margin="0,0,0,10">
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <TextBox Grid.Column="0"
+                        Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                        materialDesign:HintAssist.Hint="🔍 Search by name..."
+                        Foreground="White"
+                        CaretBrush="White"
+                        Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                        Width="250"
+                        Margin="0,0,10,0"/>
 
-                <!-- Search Box -->
-                <Grid Grid.Row="0" Margin="0,0,0,15">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    
-                    <TextBox Grid.Column="0"
-                            Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
-                            materialDesign:HintAssist.Hint="🔍 Search friends by name..."
-                            Foreground="White"
-                            CaretBrush="White"
-                            Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                            Margin="0,0,15,0"/>
+                <CheckBox Grid.Column="1" 
+                         Content="18+ Only" 
+                         IsChecked="{Binding Only18Plus}"
+                         Foreground="White"
+                         VerticalAlignment="Center"
+                         Margin="0,0,10,0"/>
 
-                    <Button Grid.Column="1"
-                           Content="🔄 Refresh"
-                           Command="{Binding RefreshCommand}"
-                           Style="{StaticResource MaterialDesignOutlinedButton}"
-                           Width="100"/>
-                </Grid>
+                <CheckBox Grid.Column="2" 
+                         Content="Hide In Group" 
+                         IsChecked="{Binding HideInGroup}"
+                         Foreground="White"
+                         VerticalAlignment="Center"
+                         Margin="0,0,10,0"/>
 
-                <!-- Filters -->
-                <StackPanel Grid.Row="1" Orientation="Horizontal">
-                    <CheckBox Content="Online Only" 
-                             IsChecked="{Binding OnlineOnly}"
-                             Foreground="White"
-                             Margin="0,0,20,0"/>
-                    <CheckBox Content="18+ Verified" 
-                             IsChecked="{Binding Only18Plus}"
-                             Foreground="White"
-                             Margin="0,0,20,0"/>
-                    <CheckBox Content="Show Trust Levels" 
-                             IsChecked="{Binding ShowTrustLevels}"
-                             Foreground="White"/>
-                </StackPanel>
+                <Button Grid.Column="3"
+                       Content="🔄 Sync Members"
+                       Command="{Binding SyncMembersCommand}"
+                       ToolTip="Sync group members from VRChat to enable 'In Group' badges"
+                       Style="{StaticResource MaterialDesignOutlinedButton}"
+                       Width="150"
+                       Height="36"
+                       Margin="0,0,10,0"/>
+
+                <Button Grid.Column="4"
+                       Content="🔄 Refresh"
+                       Command="{Binding RefreshCommand}"
+                       ToolTip="Refresh friends list"
+                       Style="{StaticResource MaterialDesignOutlinedButton}"
+                       Width="120"
+                       Height="36"/>
             </Grid>
         </Border>
 
         <!-- Friends List -->
-        <Border Grid.Row="2" Background="#1E1E1E" CornerRadius="8" Padding="15">
+        <Border Grid.Row="2" Background="#1E1E1E" CornerRadius="8">
             <Grid>
                 <!-- Loading Indicator -->
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
@@ -85,45 +91,69 @@
                     <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}"
                                 Value="0"
                                 IsIndeterminate="True"
-                                Width="50" Height="50"
+                                Width="40" Height="40"
                                 Foreground="#7C4DFF"/>
-                    <TextBlock Text="Loading friends..." 
+                    <TextBlock Text="{Binding StatusMessage}" 
                               Foreground="#888" 
-                              Margin="0,15,0,0"
+                              Margin="0,10,0,0"
                               HorizontalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Empty State -->
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
-                           Visibility="{Binding FilteredFriends.Count, Converter={StaticResource ZeroToVisibilityConverter}}">
-                    <TextBlock Text="👥" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                <!-- Empty State (only show when not loading AND no friends) -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsLoading}" Value="False"/>
+                                        <Condition Binding="{Binding FilteredCount}" Value="0"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
                     <TextBlock Text="No friends found" 
-                              FontSize="18" 
-                              FontWeight="SemiBold"
-                              Foreground="White"
-                              HorizontalAlignment="Center"
-                              Margin="0,0,0,10"/>
-                    <TextBlock Text="Try adjusting your search filters" 
-                              Foreground="#888" 
-                              FontSize="13" 
+                              FontSize="16" 
+                              Foreground="#888"
                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Try adjusting your search" 
+                              Foreground="#666" 
+                              FontSize="12" 
+                              HorizontalAlignment="Center"
+                              Margin="0,5,0,0"/>
                 </StackPanel>
 
                 <!-- Friends List -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                             Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisConverter}}">
-                    <ItemsControl ItemsSource="{Binding FilteredFriends}" Padding="5">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10">
+                    <ScrollViewer.Style>
+                        <Style TargetType="ScrollViewer">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsLoading}" Value="False"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ScrollViewer.Style>
+                    <ItemsControl ItemsSource="{Binding FilteredFriends}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border Background="#2D2D30" 
-                                       CornerRadius="8" 
-                                       Padding="15" 
-                                       Margin="0,0,0,10">
+                                       CornerRadius="6" 
+                                       Padding="10" 
+                                       Margin="0,0,0,6">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
@@ -131,57 +161,65 @@
                                         <CheckBox Grid.Column="0" 
                                                  IsChecked="{Binding IsSelected}"
                                                  VerticalAlignment="Center"
-                                                 Margin="0,0,15,0"/>
+                                                 Margin="0,0,10,0"/>
 
                                         <!-- Avatar -->
                                         <Border Grid.Column="1" 
-                                               Width="50" Height="50" 
-                                               CornerRadius="25" 
+                                               Width="40" Height="40" 
+                                               CornerRadius="20" 
                                                Background="#1E1E1E" 
-                                               ClipToBounds="True" 
-                                               VerticalAlignment="Top">
+                                               ClipToBounds="True">
                                             <Image Source="{Binding Friend.ProfilePicUrl}" 
                                                   Stretch="UniformToFill"/>
                                         </Border>
 
                                         <!-- Friend Info -->
                                         <StackPanel Grid.Column="2" 
-                                                   Margin="15,0,15,0" 
-                                                   VerticalAlignment="Center">\n                                            <TextBlock Text="{Binding Friend.DisplayName}" 
-                                                      Foreground="White" 
-                                                      FontWeight="SemiBold" 
-                                                      FontSize="15"/>
-                                            
-                                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                                <TextBlock Text="{Binding TrustLevel}" 
-                                                          Foreground="{Binding TrustLevelBrush}"
-                                                          FontSize="11"
-                                                          Margin="0,0,10,0"
-                                                          Visibility="{Binding DataContext.ShowTrustLevels, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                   Margin="10,0,10,0" 
+                                                   VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Friend.DisplayName}" 
+                                                          Foreground="White" 
+                                                          FontWeight="SemiBold" 
+                                                          FontSize="14"/>
                                                 
-                                                <TextBlock Text="🔞" 
-                                                          FontSize="11"
-                                                          Margin="0,0,10,0"
+                                                <!-- 18+ Badge -->
+                                                <TextBlock Text=" 🔞" 
+                                                          FontSize="12"
+                                                          VerticalAlignment="Center"
                                                           Visibility="{Binding Friend.IsAgeVerified, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                                                
+                                            </StackPanel>
+                                            
+                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                <!-- Status dot -->
+                                                <Ellipse Width="8" Height="8" 
+                                                        Fill="{Binding StatusBrush}"
+                                                        VerticalAlignment="Center"
+                                                        Margin="0,0,5,0"/>
                                                 <TextBlock Text="{Binding Friend.Status}" 
-                                                          Foreground="{Binding StatusBrush}"
+                                                          Foreground="#888"
                                                           FontSize="11"/>
                                             </StackPanel>
-
-                                            <TextBlock Text="{Binding Friend.StatusDescription}" 
-                                                      Foreground="#888" 
-                                                      FontSize="11" 
-                                                      TextTrimming="CharacterEllipsis"
-                                                      MaxWidth="400"
-                                                      Margin="0,3,0,0"
-                                                      Visibility="{Binding Friend.StatusDescription, Converter={StaticResource EmptyStringToVisibilityConverter}, ConverterParameter=Inverse}"/>
                                         </StackPanel>
 
-                                        <!-- Status Indicator -->
+                                        <!-- In Group Badge -->
                                         <Border Grid.Column="3"
-                                               Width="12" Height="12"
-                                               CornerRadius="6"
+                                               Background="#2196F3"
+                                               CornerRadius="4"
+                                               Padding="8,4"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,10,0"
+                                               Visibility="{Binding IsInGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="IN GROUP" 
+                                                      Foreground="White" 
+                                                      FontSize="10" 
+                                                      FontWeight="Bold"/>
+                                        </Border>
+
+                                        <!-- Status Indicator -->
+                                        <Border Grid.Column="4"
+                                               Width="10" Height="10"
+                                               CornerRadius="5"
                                                Background="{Binding StatusBrush}"
                                                VerticalAlignment="Center"
                                                ToolTip="{Binding Friend.Status}"/>
@@ -197,45 +235,45 @@
         <!-- Action Bar -->
         <Border Grid.Row="3" 
                Background="#252526" 
-               Padding="20,15"
-               Visibility="{Binding FilteredFriends.Count, Converter={StaticResource ZeroToVisibilityConverter}, ConverterParameter=Inverse}">
+               CornerRadius="8"
+               Padding="15"
+               Margin="0,10,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Selection Controls -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Button Content="Select All" 
-                           Command="{Binding SelectAllCommand}"
-                           Style="{StaticResource MaterialDesignFlatButton}"
-                           Foreground="#7C4DFF"
-                           Margin="0,0,10,0"/>
-                    <Button Content="Deselect All" 
-                           Command="{Binding DeselectAllCommand}"
-                           Style="{StaticResource MaterialDesignFlatButton}"
-                           Foreground="#7C4DFF"/>
-                </StackPanel>
+                <Button Grid.Column="0"
+                       Content="Select All" 
+                       Command="{Binding SelectAllCommand}"
+                       Style="{StaticResource MaterialDesignFlatButton}"
+                       Foreground="#7C4DFF"/>
+                <Button Grid.Column="1"
+                       Content="Deselect All" 
+                       Command="{Binding DeselectAllCommand}"
+                       Style="{StaticResource MaterialDesignFlatButton}"
+                       Foreground="#7C4DFF"/>
 
                 <!-- Selected Count -->
-                <TextBlock Grid.Column="1" 
+                <TextBlock Grid.Column="2" 
                           Text="{Binding SelectedCount, StringFormat='{}{0} selected'}"
                           Foreground="#888"
                           VerticalAlignment="Center"
                           HorizontalAlignment="Center"
-                          FontSize="14"/>
+                          FontSize="13"/>
 
                 <!-- Invite Button -->
-                <Button Grid.Column="2" 
-                       Content="📨 Invite Selected to Group" 
+                <Button Grid.Column="3" 
+                       Content="📨 Invite to Group" 
                        Command="{Binding InviteToGroupCommand}"
                        Style="{StaticResource MaterialDesignRaisedButton}"
                        Background="#4CAF50"
-                       Height="40"
-                       Padding="20,0"
-                       IsEnabled="{Binding SelectedCount, Converter={StaticResource ZeroToVisibilityConverter}, ConverterParameter=Inverse}"/>
+                       Height="36"
+                       Padding="15,0"/>
             </Grid>
         </Border>
     </Grid>

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Net.Http;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -130,13 +131,49 @@ public partial class BadgeScannerViewModel : ObservableObject
             StatusMessage = $"Scanning {TotalMembers} members for 18+ badge...";
 
             int verified = 0, unverified = 0;
+            int batchCount = 0;
 
             foreach (var member in members)
             {
                 if (_cancellationTokenSource.Token.IsCancellationRequested)
                     break;
 
-                var userDetails = await _apiService.GetUserAsync(member.UserId);
+                // Add delay every 100 members to avoid rate limiting
+                batchCount++;
+                if (batchCount >= 100)
+                {
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        StatusMessage = $"Scanned {ScannedMembers}/{TotalMembers} - Pausing to avoid rate limit...";
+                    });
+                    await Task.Delay(3000, _cancellationTokenSource.Token);
+                    batchCount = 0;
+                }
+
+                UserDetails? userDetails = null;
+                try
+                {
+                    userDetails = await _apiService.GetUserAsync(member.UserId);
+                }
+                catch (HttpRequestException ex) when (ex.Message.Contains("429") || ex.Message.Contains("TooManyRequests"))
+                {
+                    // Rate limited - wait and retry
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        StatusMessage = $"Rate Limited! Please wait... (Scanned {ScannedMembers}/{TotalMembers})";
+                    });
+                    await Task.Delay(30000, _cancellationTokenSource.Token); // Wait 30 seconds
+                    
+                    try
+                    {
+                        userDetails = await _apiService.GetUserAsync(member.UserId);
+                    }
+                    catch
+                    {
+                        // Skip this user if still failing
+                    }
+                }
+
                 ScannedMembers++;
                 ProgressPercent = (double)ScannedMembers / TotalMembers * 100;
 
