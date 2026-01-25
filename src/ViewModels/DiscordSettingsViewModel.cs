@@ -131,49 +131,58 @@ public partial class DiscordSettingsViewModel : ObservableObject
         _isLoading = true; // Prevent auto-save during load
         
         var settings = _settingsService.Settings;
-        WebhookUrl = settings.DiscordWebhookUrl ?? "";
+        var groupConfig = _settingsService.GetCurrentGroupConfig();
         
-        // User Events
-        NotifyUserJoins = settings.DiscordNotifyUserJoins;
-        NotifyUserLeaves = settings.DiscordNotifyUserLeaves;
-        NotifyUserKicked = settings.DiscordNotifyUserKicked;
-        NotifyUserBanned = settings.DiscordNotifyUserBanned;
-        NotifyUserUnbanned = settings.DiscordNotifyUserUnbanned;
-        NotifyUserRoleAdd = settings.DiscordNotifyUserRoleAdd;
-        NotifyUserRoleRemove = settings.DiscordNotifyUserRoleRemove;
-        
-        // Role Events
-        NotifyRoleCreate = settings.DiscordNotifyRoleCreate;
-        NotifyRoleUpdate = settings.DiscordNotifyRoleUpdate;
-        NotifyRoleDelete = settings.DiscordNotifyRoleDelete;
-        
-        // Instance Events
-        NotifyInstanceCreate = settings.DiscordNotifyInstanceCreate;
-        NotifyInstanceDelete = settings.DiscordNotifyInstanceDelete;
-        NotifyInstanceOpened = settings.DiscordNotifyInstanceOpened;
-        NotifyInstanceClosed = settings.DiscordNotifyInstanceClosed;
-        NotifyInstanceWarn = settings.DiscordNotifyInstanceWarn;
-        
-        // Group Events
-        NotifyGroupUpdate = settings.DiscordNotifyGroupUpdate;
-        
-        // Invite Events
-        NotifyInviteCreate = settings.DiscordNotifyInviteCreate;
-        NotifyInviteAccept = settings.DiscordNotifyInviteAccept;
-        NotifyInviteReject = settings.DiscordNotifyInviteReject;
-        NotifyJoinRequests = settings.DiscordNotifyJoinRequests;
-        
-        // Announcement Events
-        NotifyAnnouncementCreate = settings.DiscordNotifyAnnouncementCreate;
-        NotifyAnnouncementDelete = settings.DiscordNotifyAnnouncementDelete;
-        
-        // Gallery Events
-        NotifyGalleryCreate = settings.DiscordNotifyGalleryCreate;
-        NotifyGalleryDelete = settings.DiscordNotifyGalleryDelete;
-        
-        // Post Events
-        NotifyPostCreate = settings.DiscordNotifyPostCreate;
-        NotifyPostDelete = settings.DiscordNotifyPostDelete;
+        if (groupConfig != null)
+        {
+            WebhookUrl = groupConfig.DiscordWebhookUrl ?? "";
+            
+            // User Events
+            NotifyUserJoins = groupConfig.DiscordNotifyUserJoins;
+            NotifyUserLeaves = groupConfig.DiscordNotifyUserLeaves;
+            NotifyUserKicked = groupConfig.DiscordNotifyUserKicked;
+            NotifyUserBanned = groupConfig.DiscordNotifyUserBanned;
+            NotifyUserUnbanned = groupConfig.DiscordNotifyUserUnbanned;
+            NotifyUserRoleAdd = groupConfig.DiscordNotifyUserRoleAdd;
+            NotifyUserRoleRemove = groupConfig.DiscordNotifyUserRoleRemove;
+            
+            // Role Events
+            NotifyRoleCreate = groupConfig.DiscordNotifyRoleCreate;
+            NotifyRoleUpdate = groupConfig.DiscordNotifyRoleUpdate;
+            NotifyRoleDelete = groupConfig.DiscordNotifyRoleDelete;
+            
+            // Instance Events
+            NotifyInstanceCreate = groupConfig.DiscordNotifyInstanceCreate;
+            NotifyInstanceDelete = groupConfig.DiscordNotifyInstanceDelete;
+            NotifyInstanceOpened = groupConfig.DiscordNotifyInstanceOpened;
+            NotifyInstanceClosed = groupConfig.DiscordNotifyInstanceClosed;
+            NotifyInstanceWarn = groupConfig.DiscordNotifyInstanceWarn;
+            
+            // Group Events
+            NotifyGroupUpdate = groupConfig.DiscordNotifyGroupUpdate;
+            
+            // Invite Events
+            NotifyInviteCreate = groupConfig.DiscordNotifyInviteCreate;
+            NotifyInviteAccept = groupConfig.DiscordNotifyInviteAccept;
+            NotifyInviteReject = groupConfig.DiscordNotifyInviteReject;
+            NotifyJoinRequests = groupConfig.DiscordNotifyJoinRequests;
+            
+            // Announcement Events
+            NotifyAnnouncementCreate = groupConfig.DiscordNotifyAnnouncementCreate;
+            NotifyAnnouncementDelete = groupConfig.DiscordNotifyAnnouncementDelete;
+            
+            // Gallery Events
+            NotifyGalleryCreate = groupConfig.DiscordNotifyGalleryCreate;
+            NotifyGalleryDelete = groupConfig.DiscordNotifyGalleryDelete;
+            
+            // Post Events
+            NotifyPostCreate = groupConfig.DiscordNotifyPostCreate;
+            NotifyPostDelete = groupConfig.DiscordNotifyPostDelete;
+        }
+        else
+        {
+            WebhookUrl = "";
+        }
         
         // Discord Presence
         PresenceEnabled = settings.DiscordPresenceEnabled;
@@ -278,50 +287,57 @@ public partial class DiscordSettingsViewModel : ObservableObject
     {
         Console.WriteLine("[DISCORD-VM] SaveSettings called");
         var settings = _settingsService.Settings;
-        settings.DiscordWebhookUrl = WebhookUrl;
-        Console.WriteLine("[DISCORD-VM] Saving webhook URL (redacted)");
+        var groupConfig = _settingsService.GetCurrentGroupConfig();
         
-        // User Events
-        settings.DiscordNotifyUserJoins = NotifyUserJoins;
-        settings.DiscordNotifyUserLeaves = NotifyUserLeaves;
-        settings.DiscordNotifyUserKicked = NotifyUserKicked;
-        settings.DiscordNotifyUserBanned = NotifyUserBanned;
-        settings.DiscordNotifyUserUnbanned = NotifyUserUnbanned;
-        settings.DiscordNotifyUserRoleAdd = NotifyUserRoleAdd;
-        settings.DiscordNotifyUserRoleRemove = NotifyUserRoleRemove;
-        
-        // Role Events
-        settings.DiscordNotifyRoleCreate = NotifyRoleCreate;
-        settings.DiscordNotifyRoleUpdate = NotifyRoleUpdate;
-        settings.DiscordNotifyRoleDelete = NotifyRoleDelete;
-        
-        // Instance Events
-        settings.DiscordNotifyInstanceCreate = NotifyInstanceCreate;
-        settings.DiscordNotifyInstanceDelete = NotifyInstanceDelete;
-        settings.DiscordNotifyInstanceOpened = NotifyInstanceOpened;
-        settings.DiscordNotifyInstanceClosed = NotifyInstanceClosed;
-        settings.DiscordNotifyInstanceWarn = NotifyInstanceWarn;
-        
-        // Group Events
-        settings.DiscordNotifyGroupUpdate = NotifyGroupUpdate;
-        
-        // Invite Events
-        settings.DiscordNotifyInviteCreate = NotifyInviteCreate;
-        settings.DiscordNotifyInviteAccept = NotifyInviteAccept;
-        settings.DiscordNotifyInviteReject = NotifyInviteReject;
-        settings.DiscordNotifyJoinRequests = NotifyJoinRequests;
-        
-        // Announcement Events
-        settings.DiscordNotifyAnnouncementCreate = NotifyAnnouncementCreate;
-        settings.DiscordNotifyAnnouncementDelete = NotifyAnnouncementDelete;
-        
-        // Gallery Events
-        settings.DiscordNotifyGalleryCreate = NotifyGalleryCreate;
-        settings.DiscordNotifyGalleryDelete = NotifyGalleryDelete;
-        
-        // Post Events
-        settings.DiscordNotifyPostCreate = NotifyPostCreate;
-        settings.DiscordNotifyPostDelete = NotifyPostDelete;
+        if (groupConfig != null)
+        {
+            groupConfig.DiscordWebhookUrl = WebhookUrl;
+            Console.WriteLine("[DISCORD-VM] Saving webhook URL (redacted)");
+            
+            // User Events
+            groupConfig.DiscordNotifyUserJoins = NotifyUserJoins;
+            groupConfig.DiscordNotifyUserLeaves = NotifyUserLeaves;
+            groupConfig.DiscordNotifyUserKicked = NotifyUserKicked;
+            groupConfig.DiscordNotifyUserBanned = NotifyUserBanned;
+            groupConfig.DiscordNotifyUserUnbanned = NotifyUserUnbanned;
+            groupConfig.DiscordNotifyUserRoleAdd = NotifyUserRoleAdd;
+            groupConfig.DiscordNotifyUserRoleRemove = NotifyUserRoleRemove;
+            
+            // Role Events
+            groupConfig.DiscordNotifyRoleCreate = NotifyRoleCreate;
+            groupConfig.DiscordNotifyRoleUpdate = NotifyRoleUpdate;
+            groupConfig.DiscordNotifyRoleDelete = NotifyRoleDelete;
+            
+            // Instance Events
+            groupConfig.DiscordNotifyInstanceCreate = NotifyInstanceCreate;
+            groupConfig.DiscordNotifyInstanceDelete = NotifyInstanceDelete;
+            groupConfig.DiscordNotifyInstanceOpened = NotifyInstanceOpened;
+            groupConfig.DiscordNotifyInstanceClosed = NotifyInstanceClosed;
+            groupConfig.DiscordNotifyInstanceWarn = NotifyInstanceWarn;
+            
+            // Group Events
+            groupConfig.DiscordNotifyGroupUpdate = NotifyGroupUpdate;
+            
+            // Invite Events
+            groupConfig.DiscordNotifyInviteCreate = NotifyInviteCreate;
+            groupConfig.DiscordNotifyInviteAccept = NotifyInviteAccept;
+            groupConfig.DiscordNotifyInviteReject = NotifyInviteReject;
+            groupConfig.DiscordNotifyJoinRequests = NotifyJoinRequests;
+            
+            // Announcement Events
+            groupConfig.DiscordNotifyAnnouncementCreate = NotifyAnnouncementCreate;
+            groupConfig.DiscordNotifyAnnouncementDelete = NotifyAnnouncementDelete;
+            
+            // Gallery Events
+            groupConfig.DiscordNotifyGalleryCreate = NotifyGalleryCreate;
+            groupConfig.DiscordNotifyGalleryDelete = NotifyGalleryDelete;
+            
+            // Post Events
+            groupConfig.DiscordNotifyPostCreate = NotifyPostCreate;
+            groupConfig.DiscordNotifyPostDelete = NotifyPostDelete;
+            
+            _settingsService.AddOrUpdateGroup(groupConfig);
+        }
         
         // Discord Presence
         settings.DiscordPresenceEnabled = PresenceEnabled;

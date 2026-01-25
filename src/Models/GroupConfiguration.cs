@@ -43,6 +43,17 @@ public class GroupConfiguration
     public bool DiscordNotifyPostCreate { get; set; } = false;
     public bool DiscordNotifyPostUpdate { get; set; } = false;
     public bool DiscordNotifyPostDelete { get; set; } = false;
+
+    // Additional Discord properties to match ViewModel
+    public bool DiscordNotifyUserUnbanned { get; set; } = false;
+    public bool DiscordNotifyUserRoleAdd { get; set; } = false;
+    public bool DiscordNotifyUserRoleRemove { get; set; } = false;
+    public bool DiscordNotifyInviteCreate { get; set; } = false;
+    public bool DiscordNotifyInviteAccept { get; set; } = false;
+    public bool DiscordNotifyInviteReject { get; set; } = false;
+    public bool DiscordNotifyJoinRequests { get; set; } = false;
+    public bool DiscordNotifyGalleryCreate { get; set; } = false;
+    public bool DiscordNotifyGalleryDelete { get; set; } = false;
     
     // Security Settings per group
     public bool SecurityMonitoringEnabled { get; set; } = false;

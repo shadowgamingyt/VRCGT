@@ -210,10 +210,6 @@ public class InstanceInviterService : IInstanceInviterService
 
             Console.WriteLine($"[INSTANCE-USERS] Searching through {lines.Count} log lines");
 
-            // Track when we entered the current instance
-            bool foundInstanceEntry = false;
-            bool inCurrentInstance = false;
-            
             // Regex patterns for finding user information
             var userIdPattern = new Regex(@"usr_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}");
             var onPlayerJoinedPattern = new Regex(@"OnPlayerJoined\s+(.+?)(?:\s*$)", RegexOptions.Compiled);
@@ -223,23 +219,10 @@ public class InstanceInviterService : IInstanceInviterService
             // Search from newest to oldest to find current instance boundary
             foreach (var line in lines)
             {
-                // Look for when we entered the current instance
-                if (!foundInstanceEntry && (line.Contains($"Joining or Creating Room:") || line.Contains($"Rejoining local world:")) && line.Contains(currentInstance.WorldId))
+                // Stop if we hit any join event (it's the start of the current session or start of a different session)
+                if (line.Contains("Joining or Creating Room:") || line.Contains("Rejoining local world:"))
                 {
-                    Console.WriteLine($"[INSTANCE-USERS] Found instance entry point");
-                    foundInstanceEntry = true;
-                    inCurrentInstance = true;
-                    continue;
-                }
-
-                // If we haven't found the instance entry yet, skip
-                if (!foundInstanceEntry)
-                    continue;
-
-                // If we hit another instance join before this one, stop
-                if (inCurrentInstance && (line.Contains("Joining or Creating Room:") || line.Contains("Rejoining local world:")) && !line.Contains(currentInstance.WorldId))
-                {
-                    Console.WriteLine($"[INSTANCE-USERS] Found previous instance boundary, stopping search");
+                    Console.WriteLine($"[INSTANCE-USERS] Found instance boundary, stopping search");
                     break;
                 }
 
@@ -329,6 +312,65 @@ public class InstanceInviterService : IInstanceInviterService
         {
             Console.WriteLine($"[INSTANCE-USERS] Error reading instance users: {ex.Message}");
             Console.WriteLine($"[INSTANCE-USERS] Stack trace: {ex.StackTrace}");
+        }
+
+        // Fetch additional details from API for all users found
+        if (apiService.IsLoggedIn && users.Count > 0)
+        {
+            Console.WriteLine($"[INSTANCE-USERS] Fetching detailed info for {users.Count} users...");
+            
+            // Limit concurrency to 5 parallel requests
+            using (var semaphore = new System.Threading.SemaphoreSlim(5))
+            {
+                var tasks = users.Select(async user => 
+                {
+                    await semaphore.WaitAsync();
+                    try
+                    {
+                        // If we don't have a UserId, search by name
+                        if (string.IsNullOrEmpty(user.UserId))
+                        {
+                            // Console.WriteLine($"[INSTANCE-USERS] Searching for user ID: {user.DisplayName}");
+                            try 
+                            { 
+                                var searchResults = await apiService.SearchUsersAsync(user.DisplayName);
+                                var match = searchResults.FirstOrDefault(u => u.DisplayName.Equals(user.DisplayName, StringComparison.OrdinalIgnoreCase));
+                                
+                                if (match != null)
+                                {
+                                    user.UserId = match.UserId;
+                                }
+                            }
+                            catch (Exception searchEx) 
+                            {
+                                Console.WriteLine($"[INSTANCE-USERS] Search failed for {user.DisplayName}: {searchEx.Message}");
+                            }
+                        }
+
+                        // If we have a UserId now, fetch full details
+                        if (!string.IsNullOrEmpty(user.UserId))
+                        {
+                            var details = await apiService.GetUserAsync(user.UserId);
+                            if (details != null)
+                            {
+                                user.ProfilePicUrl = details.ProfilePicUrl ?? string.Empty;
+                                user.IsAgeVerified = details.IsAgeVerified;
+                                user.Tags = details.Tags ?? new List<string>();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[INSTANCE-USERS] Failed to fetch details for {user.DisplayName}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
+
+                await Task.WhenAll(tasks);
+            }
         }
         
         return users;

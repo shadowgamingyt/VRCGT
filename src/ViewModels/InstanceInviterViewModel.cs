@@ -245,7 +245,14 @@ public partial class InstanceInviterViewModel : ObservableObject
             // Auto-invite if enabled
             if (AutoInviteEnabled && FilteredInstanceUsers.Count > 0)
             {
-                _ = InviteInstanceUsersAsync();
+                // Select all filtered users for auto-invite
+                foreach (var user in FilteredInstanceUsers)
+                {
+                    user.IsSelected = true;
+                }
+                UpdateInstanceUserSelectedCount();
+                
+                _ = InviteInstanceUsersInternal(true);
             }
         }
         catch (Exception ex)
@@ -493,10 +500,16 @@ public partial class InstanceInviterViewModel : ObservableObject
     [RelayCommand]
     private async Task InviteInstanceUsersAsync()
     {
+        await InviteInstanceUsersInternal(false);
+    }
+
+    private async Task InviteInstanceUsersInternal(bool silent)
+    {
         var selectedUsers = InstanceUsers.Where(u => u.IsSelected).ToList();
         if (selectedUsers.Count == 0)
         {
-            MessageBox.Show("Please select at least one user to invite.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (!silent)
+                MessageBox.Show("Please select at least one user to invite.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -504,7 +517,10 @@ public partial class InstanceInviterViewModel : ObservableObject
         var groupId = _settingsService.Settings.GroupId;
         if (string.IsNullOrEmpty(groupId))
         {
-            MessageBox.Show("No group configured. Please set up a group first.", "No Group", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (!silent)
+                MessageBox.Show("No group configured. Please set up a group first.", "No Group", MessageBoxButton.OK, MessageBoxImage.Warning);
+            else
+                StatusMessage = "Auto-invite failed: No group configured";
             return;
         }
 
@@ -531,17 +547,20 @@ public partial class InstanceInviterViewModel : ObservableObject
                     failCount++;
                 }
 
-                // Small delay to avoid rate limiting
-                await Task.Delay(500);
+                // Random delay between 4 and 13 seconds
+                var delay = Random.Shared.Next(4000, 13000);
+                await Task.Delay(delay);
             }
 
             StatusMessage = $"Invites sent: {successCount} succeeded, {failCount} failed";
-            MessageBox.Show($"Sent {successCount} group invites successfully.\n{failCount} failed.", "Invites Sent", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (!silent)
+                MessageBox.Show($"Sent {successCount} group invites successfully.\n{failCount} failed.", "Invites Sent", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             StatusMessage = $"Error sending invites: {ex.Message}";
-            MessageBox.Show($"Failed to send invites: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (!silent)
+                MessageBox.Show($"Failed to send invites: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {

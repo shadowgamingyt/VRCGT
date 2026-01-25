@@ -488,7 +488,8 @@ public class AuditLogService : IAuditLogService, IDisposable
                     log.EventType,
                     log.ActorName ?? "Unknown",
                     log.TargetName,
-                    log.Description
+                    log.Description,
+                    _currentGroupId
                 );
                 return success;
             }
@@ -511,7 +512,8 @@ public class AuditLogService : IAuditLogService, IDisposable
                     log.EventType,
                     log.ActorName ?? "Unknown",
                     log.TargetName,
-                    log.Description
+                    log.Description,
+                    _currentGroupId
                 );
                 return success;
             }
@@ -567,7 +569,7 @@ public class AuditLogService : IAuditLogService, IDisposable
                 var log = group.OrderBy(l => l.CreatedAt).First();
                 var groupIds = group.Select(l => l.Id).ToList();
 
-                if (_discordService is DiscordWebhookService discordSvc && !discordSvc.ShouldSendAuditEvent(log.EventType))
+                if (_discordService is DiscordWebhookService discordSvc && !discordSvc.ShouldSendAuditEvent(log.EventType, _currentGroupId))
                 {
                     sentLogIds.AddRange(groupIds);
                     skipped++;

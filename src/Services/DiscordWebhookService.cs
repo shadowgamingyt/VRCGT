@@ -6,11 +6,14 @@ namespace VRCGroupTools.Services;
 
 public interface IDiscordWebhookService
 {
-    Task<bool> SendMessageAsync(string title, string description, int color, string? thumbnailUrl = null);
+    Task<bool> SendMessageAsync(string title, string description, int color, string? thumbnailUrl = null, string? groupId = null);
     Task<WebhookTestResult> TestWebhookAsync(string webhookUrl);
-    Task<bool> SendModerationActionAsync(string actionType, string targetUserId, string targetName, string actorName, string reason, string? description, DateTime actionTime, DateTime? expiresAt = null, int? infractionCount = null);
+    Task<bool> SendModerationActionAsync(string actionType, string targetUserId, string targetName, string actorName, string reason, string? description, DateTime actionTime, DateTime? expiresAt = null, int? infractionCount = null, string? groupId = null);
     Task<bool> SendWebhookAsync(string webhookUrl, object payload);
     bool IsConfigured { get; }
+    bool IsConfiguredForGroup(string? groupId);
+    Task<bool> SendAuditEventAsync(string eventType, string actorName, string? targetName, string? description, string? groupId = null);
+    bool ShouldSendAuditEvent(string eventType, string? groupId = null);
 }
 
 public class WebhookTestResult
@@ -27,17 +30,36 @@ public class DiscordWebhookService : IDiscordWebhookService
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_settingsService.Settings.DiscordWebhookUrl);
 
+    public bool IsConfiguredForGroup(string? groupId)
+    {
+        if (string.IsNullOrEmpty(groupId)) return IsConfigured;
+        var groupConfig = _settingsService.GetGroupConfig(groupId);
+        return !string.IsNullOrWhiteSpace(groupConfig?.DiscordWebhookUrl);
+    }
+
     public DiscordWebhookService(ISettingsService settingsService)
     {
         _settingsService = settingsService;
         _httpClient = new HttpClient();
     }
 
-    public async Task<bool> SendMessageAsync(string title, string description, int color, string? thumbnailUrl = null)
+    public async Task<bool> SendMessageAsync(string title, string description, int color, string? thumbnailUrl = null, string? groupId = null)
     {
         Console.WriteLine($"[DISCORD] SendMessageAsync called - Title: {title}");
         
-        if (!IsConfigured)
+        string? webhookUrl = null;
+        if (!string.IsNullOrEmpty(groupId))
+        {
+            webhookUrl = _settingsService.GetGroupConfig(groupId)?.DiscordWebhookUrl;
+        }
+        
+        // Fallback to global if not group specific or groupId not provided
+        if (string.IsNullOrWhiteSpace(webhookUrl) && string.IsNullOrEmpty(groupId))
+        {
+            webhookUrl = _settingsService.Settings.DiscordWebhookUrl;
+        }
+        
+        if (string.IsNullOrWhiteSpace(webhookUrl))
         {
             Console.WriteLine("[DISCORD] Not configured, webhook URL is missing");
             return false;
@@ -66,7 +88,7 @@ public class DiscordWebhookService : IDiscordWebhookService
             var json = JsonConvert.SerializeObject(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync(_settingsService.Settings.DiscordWebhookUrl, content);
+            var response = await _httpClient.PostAsync(webhookUrl, content);
             Console.WriteLine($"[DISCORD] HTTP Status: {response.StatusCode}");
             
             if (!response.IsSuccessStatusCode)
@@ -150,16 +172,82 @@ public class DiscordWebhookService : IDiscordWebhookService
         }
     }
 
-    public bool ShouldSendAuditEvent(string eventType)
+    public bool ShouldSendAuditEvent(string eventType, string? groupId = null)
     {
+        // Group-specific settings
+        if (!string.IsNullOrEmpty(groupId))
+        {
+            var groupConfig = _settingsService.GetGroupConfig(groupId);
+            if (groupConfig != null)
+            {
+                var type = eventType.ToLowerInvariant();
+                if (type.StartsWith("group.member.")) 
+                    type = type.Replace("group.member.", "group.user.");
+
+                return type switch
+                {
+                    // Member Events
+                    "group.user.join" => groupConfig.DiscordNotifyUserJoins,
+                    "group.user.leave" => groupConfig.DiscordNotifyUserLeaves,
+                    "group.user.kick" => groupConfig.DiscordNotifyUserKicked,
+                    "group.user.ban" => groupConfig.DiscordNotifyUserBanned,
+                    "group.user.unban" => groupConfig.DiscordNotifyUserUnbanned,
+                    "group.user.role.add" => groupConfig.DiscordNotifyUserRoleAdd,
+                    "group.user.role.remove" => groupConfig.DiscordNotifyUserRoleRemove,
+                    
+                    // Join Request Events
+                    "group.request.create" or "group.joinrequest" => groupConfig.DiscordNotifyJoinRequests,
+                    "group.request.accept" => groupConfig.DiscordNotifyJoinRequests,
+                    "group.request.reject" => groupConfig.DiscordNotifyJoinRequests,
+                    "group.request.block" => groupConfig.DiscordNotifyJoinRequests,
+                    "group.request.unblock" => groupConfig.DiscordNotifyJoinRequests,
+
+                    // Role Events
+                    "group.role.create" => groupConfig.DiscordNotifyRoleCreate,
+                    "group.role.update" => groupConfig.DiscordNotifyRoleUpdate,
+                    "group.role.delete" => groupConfig.DiscordNotifyRoleDelete,
+
+                    // Instance Events
+                    "group.instance.create" => groupConfig.DiscordNotifyInstanceCreate,
+                    "group.instance.delete" => groupConfig.DiscordNotifyInstanceDelete,
+                    "group.instance.open" => groupConfig.DiscordNotifyInstanceOpened,
+                    "group.instance.close" => groupConfig.DiscordNotifyInstanceClosed,
+                    "group.instance.warn" => groupConfig.DiscordNotifyInstanceWarn,
+
+                    // Group Events
+                    "group.update" => groupConfig.DiscordNotifyGroupUpdate,
+
+                    // Invite Events
+                    "group.invite.create" or "group.user.invite" => groupConfig.DiscordNotifyInviteCreate,
+                    "group.invite.accept" => groupConfig.DiscordNotifyInviteAccept,
+                    "group.invite.reject" => groupConfig.DiscordNotifyInviteReject,
+
+                    // Announcement Events
+                    "group.announcement.create" => groupConfig.DiscordNotifyAnnouncementCreate,
+                    "group.announcement.delete" => groupConfig.DiscordNotifyAnnouncementDelete,
+
+                    // Gallery Events
+                    "group.gallery.create" => groupConfig.DiscordNotifyGalleryCreate,
+                    "group.gallery.delete" => groupConfig.DiscordNotifyGalleryDelete,
+
+                    // Post Events
+                    "group.post.create" => groupConfig.DiscordNotifyPostCreate,
+                    "group.post.delete" => groupConfig.DiscordNotifyPostDelete,
+
+                    _ => false
+                };
+            }
+        }
+
+        // Global fallback
         var settings = _settingsService.Settings;
-        var type = eventType.ToLowerInvariant();
+        var t = eventType.ToLowerInvariant();
         
         // Handle common variations
-        if (type.StartsWith("group.member.")) 
-            type = type.Replace("group.member.", "group.user.");
+        if (t.StartsWith("group.member.")) 
+            t = t.Replace("group.member.", "group.user.");
 
-        return type switch
+        return t switch
         {
             // Member Events
             "group.user.join" => settings.DiscordNotifyUserJoins,
@@ -196,7 +284,7 @@ public class DiscordWebhookService : IDiscordWebhookService
             "group.invite.create" or "group.user.invite" => settings.DiscordNotifyInviteCreate,
             "group.invite.accept" => settings.DiscordNotifyInviteAccept,
             "group.invite.reject" => settings.DiscordNotifyInviteReject,
-
+            
             // Announcement Events
             "group.announcement.create" => settings.DiscordNotifyAnnouncementCreate,
             "group.announcement.delete" => settings.DiscordNotifyAnnouncementDelete,
@@ -214,22 +302,23 @@ public class DiscordWebhookService : IDiscordWebhookService
     }
 
     // Helper method to send audit log events
-    public async Task<bool> SendAuditEventAsync(string eventType, string actorName, string? targetName, string? description)
+    public async Task<bool> SendAuditEventAsync(string eventType, string actorName, string? targetName, string? description, string? groupId = null)
     {
         var type = eventType.ToLowerInvariant();
         if (type.StartsWith("group.member.")) 
             type = type.Replace("group.member.", "group.user.");
 
-        Console.WriteLine($"[DISCORD] SendAuditEventAsync called - EventType: {type} (raw: {eventType}), IsConfigured: {IsConfigured}");
+        bool configured = IsConfiguredForGroup(groupId);
+        Console.WriteLine($"[DISCORD] SendAuditEventAsync called - EventType: {type} (raw: {eventType}), IsConfigured: {configured}");
         
-        if (!IsConfigured)
+        if (!configured)
         {
             Console.WriteLine($"[DISCORD] Webhook not configured, skipping notification");
             return false;
         }
         
         // check with original eventType as ShouldSendAuditEvent now handles logic
-        bool shouldSend = ShouldSendAuditEvent(eventType);
+        bool shouldSend = ShouldSendAuditEvent(eventType, groupId);
 
         if (!shouldSend)
         {
@@ -299,7 +388,7 @@ public class DiscordWebhookService : IDiscordWebhookService
             desc.AppendLine($"**Details:** {description}");
 
         Console.WriteLine($"[DISCORD] Sending message: {emoji} {title} (Color: {color})");
-        var success = await SendMessageAsync($"{emoji} {title}", desc.ToString(), color);
+        var success = await SendMessageAsync($"{emoji} {title}", desc.ToString(), color, null, groupId);
         Console.WriteLine($"[DISCORD] Message send result: {success}");
         return success;
     }
@@ -314,9 +403,10 @@ public class DiscordWebhookService : IDiscordWebhookService
         string? description,
         DateTime actionTime,
         DateTime? expiresAt = null,
-        int? infractionCount = null)
+        int? infractionCount = null,
+        string? groupId = null)
     {
-        if (!IsConfigured)
+        if (!IsConfiguredForGroup(groupId))
         {
             return false;
         }
@@ -362,6 +452,6 @@ public class DiscordWebhookService : IDiscordWebhookService
             desc.AppendLine($"**Previous Infractions:** {infractionCount.Value}");
         }
         
-        return await SendMessageAsync($"{emoji} {title}", desc.ToString(), color);
+        return await SendMessageAsync($"{emoji} {title}", desc.ToString(), color, null, groupId);
     }
 }
