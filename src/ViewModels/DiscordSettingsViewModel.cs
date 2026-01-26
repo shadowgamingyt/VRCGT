@@ -11,8 +11,30 @@ public partial class DiscordSettingsViewModel : ObservableObject
     private readonly IDiscordWebhookService _discordService;
     private bool _isLoading = false; // Prevent auto-save during initial load
 
+    // Webhook URLs per category
     [ObservableProperty]
-    private string _webhookUrl = "";
+    private string _webhookMemberEvents = "";
+
+    [ObservableProperty]
+    private string _webhookRoleEvents = "";
+
+    [ObservableProperty]
+    private string _webhookInstanceEvents = "";
+
+    [ObservableProperty]
+    private string _webhookGroupEvents = "";
+
+    [ObservableProperty]
+    private string _webhookInviteEvents = "";
+
+    [ObservableProperty]
+    private string _webhookAnnouncementEvents = "";
+
+    [ObservableProperty]
+    private string _webhookGalleryEvents = "";
+
+    [ObservableProperty]
+    private string _webhookPostEvents = "";
 
     // User Events
     [ObservableProperty]
@@ -101,15 +123,6 @@ public partial class DiscordSettingsViewModel : ObservableObject
     private bool _notifyPostDelete;
 
     [ObservableProperty]
-    private bool _presenceEnabled;
-
-    [ObservableProperty]
-    private string _presenceAppId = "";
-
-    [ObservableProperty]
-    private bool _presenceShowRepoButton = true;
-
-    [ObservableProperty]
     private string _statusMessage = "";
 
     [ObservableProperty]
@@ -135,8 +148,6 @@ public partial class DiscordSettingsViewModel : ObservableObject
         
         if (groupConfig != null)
         {
-            WebhookUrl = groupConfig.DiscordWebhookUrl ?? "";
-            
             // User Events
             NotifyUserJoins = groupConfig.DiscordNotifyUserJoins;
             NotifyUserLeaves = groupConfig.DiscordNotifyUserLeaves;
@@ -178,29 +189,30 @@ public partial class DiscordSettingsViewModel : ObservableObject
             // Post Events
             NotifyPostCreate = groupConfig.DiscordNotifyPostCreate;
             NotifyPostDelete = groupConfig.DiscordNotifyPostDelete;
+            
+            // Load webhook URLs for each category
+            WebhookMemberEvents = groupConfig.DiscordWebhookMemberEvents ?? "";
+            WebhookRoleEvents = groupConfig.DiscordWebhookRoleEvents ?? "";
+            WebhookInstanceEvents = groupConfig.DiscordWebhookInstanceEvents ?? "";
+            WebhookGroupEvents = groupConfig.DiscordWebhookGroupEvents ?? "";
+            WebhookInviteEvents = groupConfig.DiscordWebhookInviteEvents ?? "";
+            WebhookAnnouncementEvents = groupConfig.DiscordWebhookAnnouncementEvents ?? "";
+            WebhookGalleryEvents = groupConfig.DiscordWebhookGalleryEvents ?? "";
+            WebhookPostEvents = groupConfig.DiscordWebhookPostEvents ?? "";
         }
-        else
-        {
-            WebhookUrl = "";
-        }
-        
-        // Discord Presence
-        PresenceEnabled = settings.DiscordPresenceEnabled;
-        PresenceAppId = settings.DiscordPresenceAppId ?? "";
-        PresenceShowRepoButton = settings.DiscordPresenceShowRepoButton;
-        
-        IsWebhookValid = !string.IsNullOrWhiteSpace(WebhookUrl);
         
         _isLoading = false; // Enable auto-save after load
     }
 
-    partial void OnWebhookUrlChanged(string value)
-    {
-        IsWebhookValid = !string.IsNullOrWhiteSpace(value) && 
-                         (value.StartsWith("https://discord.com/api/webhooks/") ||
-                          value.StartsWith("https://discordapp.com/api/webhooks/"));
-        AutoSaveSettings();
-    }
+    // Webhook URL change handlers
+    partial void OnWebhookMemberEventsChanged(string value) => AutoSaveSettings();
+    partial void OnWebhookRoleEventsChanged(string value) => AutoSaveSettings();
+    partial void OnWebhookInstanceEventsChanged(string value) => AutoSaveSettings();
+    partial void OnWebhookGroupEventsChanged(string value) => AutoSaveSettings();
+    partial void OnWebhookInviteEventsChanged(string value) => AutoSaveSettings();
+    partial void OnWebhookAnnouncementEventsChanged(string value) => AutoSaveSettings();
+    partial void OnWebhookGalleryEventsChanged(string value) => AutoSaveSettings();
+    partial void OnWebhookPostEventsChanged(string value) => AutoSaveSettings();
 
     // Auto-save when any notification setting changes
     partial void OnNotifyUserJoinsChanged(bool value) { Console.WriteLine($"[DISCORD-VM] NotifyUserJoins changed to: {value}"); AutoSaveSettings(); }
@@ -229,9 +241,6 @@ public partial class DiscordSettingsViewModel : ObservableObject
     partial void OnNotifyGalleryDeleteChanged(bool value) => AutoSaveSettings();
     partial void OnNotifyPostCreateChanged(bool value) => AutoSaveSettings();
     partial void OnNotifyPostDeleteChanged(bool value) => AutoSaveSettings();
-    partial void OnPresenceEnabledChanged(bool value) => AutoSaveSettings();
-    partial void OnPresenceAppIdChanged(string value) => AutoSaveSettings();
-    partial void OnPresenceShowRepoButtonChanged(bool value) => AutoSaveSettings();
 
     private void AutoSaveSettings()
     {
@@ -246,43 +255,6 @@ public partial class DiscordSettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task TestWebhookAsync()
-    {
-        if (string.IsNullOrWhiteSpace(WebhookUrl))
-        {
-            StatusMessage = "⚠️ Please enter a webhook URL";
-            return;
-        }
-
-        if (!WebhookUrl.StartsWith("https://discord.com/api/webhooks/") &&
-            !WebhookUrl.StartsWith("https://discordapp.com/api/webhooks/"))
-        {
-            StatusMessage = "⚠️ Invalid webhook URL format";
-            return;
-        }
-
-        IsTesting = true;
-        StatusMessage = "Testing webhook...";
-
-        var result = await _discordService.TestWebhookAsync(WebhookUrl);
-
-        if (result.Success)
-        {
-            StatusMessage = "✅ Webhook connected successfully!";
-            IsWebhookValid = true;
-        }
-        else
-        {
-            var status = result.StatusCode.HasValue ? $" (HTTP {result.StatusCode})" : "";
-            var error = string.IsNullOrWhiteSpace(result.ErrorMessage) ? "" : $" {result.ErrorMessage}";
-            StatusMessage = $"❌ Failed to connect{status}.{error}";
-            IsWebhookValid = false;
-        }
-
-        IsTesting = false;
-    }
-
-    [RelayCommand]
     private void SaveSettings()
     {
         Console.WriteLine("[DISCORD-VM] SaveSettings called");
@@ -291,9 +263,6 @@ public partial class DiscordSettingsViewModel : ObservableObject
         
         if (groupConfig != null)
         {
-            groupConfig.DiscordWebhookUrl = WebhookUrl;
-            Console.WriteLine("[DISCORD-VM] Saving webhook URL (redacted)");
-            
             // User Events
             groupConfig.DiscordNotifyUserJoins = NotifyUserJoins;
             groupConfig.DiscordNotifyUserLeaves = NotifyUserLeaves;
@@ -336,13 +305,18 @@ public partial class DiscordSettingsViewModel : ObservableObject
             groupConfig.DiscordNotifyPostCreate = NotifyPostCreate;
             groupConfig.DiscordNotifyPostDelete = NotifyPostDelete;
             
+            // Save webhook URLs for each category
+            groupConfig.DiscordWebhookMemberEvents = WebhookMemberEvents;
+            groupConfig.DiscordWebhookRoleEvents = WebhookRoleEvents;
+            groupConfig.DiscordWebhookInstanceEvents = WebhookInstanceEvents;
+            groupConfig.DiscordWebhookGroupEvents = WebhookGroupEvents;
+            groupConfig.DiscordWebhookInviteEvents = WebhookInviteEvents;
+            groupConfig.DiscordWebhookAnnouncementEvents = WebhookAnnouncementEvents;
+            groupConfig.DiscordWebhookGalleryEvents = WebhookGalleryEvents;
+            groupConfig.DiscordWebhookPostEvents = WebhookPostEvents;
+            
             _settingsService.AddOrUpdateGroup(groupConfig);
         }
-        
-        // Discord Presence
-        settings.DiscordPresenceEnabled = PresenceEnabled;
-        settings.DiscordPresenceAppId = PresenceAppId;
-        settings.DiscordPresenceShowRepoButton = PresenceShowRepoButton;
 
         Console.WriteLine("[DISCORD-VM] Calling _settingsService.Save()...");
         _settingsService.Save();

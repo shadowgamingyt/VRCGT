@@ -2356,6 +2356,17 @@ public class GroupBanEntry
     
     public string BanTypeDisplay => IsInstanceBan ? "Instance Ban" : "Group Ban";
     public string MembershipDisplay => WasMember ? "Was Member" : "Not Member";
+    
+    // DateTime property for proper sorting
+    public DateTime BannedAtDateTime 
+    { 
+        get
+        {
+            if (DateTime.TryParse(BannedAt, out var date))
+                return date;
+            return DateTime.MinValue;
+        }
+    }
 }
 
 public class GroupJoinRequest

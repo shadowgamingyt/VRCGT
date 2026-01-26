@@ -13,8 +13,18 @@ public class GroupConfiguration
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastAccessed { get; set; }
     
+    // Discord Webhook URLs per category
+    public string? DiscordWebhookMemberEvents { get; set; }
+    public string? DiscordWebhookRoleEvents { get; set; }
+    public string? DiscordWebhookInstanceEvents { get; set; }
+    public string? DiscordWebhookGroupEvents { get; set; }
+    public string? DiscordWebhookInviteEvents { get; set; }
+    public string? DiscordWebhookAnnouncementEvents { get; set; }
+    public string? DiscordWebhookGalleryEvents { get; set; }
+    public string? DiscordWebhookPostEvents { get; set; }
+    
     // Discord Settings per group
-    public string? DiscordWebhookUrl { get; set; }
+    public string? DiscordWebhookUrl { get; set; } // Legacy - kept for migration
     public bool DiscordNotifyUserJoins { get; set; } = false;
     public bool DiscordNotifyUserLeaves { get; set; } = false;
     public bool DiscordNotifyUserUpdates { get; set; } = false;

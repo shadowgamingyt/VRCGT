@@ -14,6 +14,7 @@ public interface IDiscordWebhookService
     bool IsConfiguredForGroup(string? groupId);
     Task<bool> SendAuditEventAsync(string eventType, string actorName, string? targetName, string? description, string? groupId = null);
     bool ShouldSendAuditEvent(string eventType, string? groupId = null);
+    string? GetWebhookUrlForEventType(string eventType, string? groupId = null);
 }
 
 public class WebhookTestResult
@@ -47,10 +48,22 @@ public class DiscordWebhookService : IDiscordWebhookService
     {
         Console.WriteLine($"[DISCORD] SendMessageAsync called - Title: {title}");
         
+        // For group-specific events, try to get the appropriate webhook based on event type
         string? webhookUrl = null;
         if (!string.IsNullOrEmpty(groupId))
         {
-            webhookUrl = _settingsService.GetGroupConfig(groupId)?.DiscordWebhookUrl;
+            // Try to extract event type from title to route to correct webhook
+            var eventType = ExtractEventTypeFromTitle(title);
+            if (!string.IsNullOrEmpty(eventType))
+            {
+                webhookUrl = GetWebhookUrlForEventType(eventType, groupId);
+            }
+            
+            // Fallback to legacy webhook if no category-specific webhook found
+            if (string.IsNullOrWhiteSpace(webhookUrl))
+            {
+                webhookUrl = _settingsService.GetGroupConfig(groupId)?.DiscordWebhookUrl;
+            }
         }
         
         // Fallback to global if not group specific or groupId not provided
@@ -308,12 +321,15 @@ public class DiscordWebhookService : IDiscordWebhookService
         if (type.StartsWith("group.member.")) 
             type = type.Replace("group.member.", "group.user.");
 
-        bool configured = IsConfiguredForGroup(groupId);
+        // Get the webhook URL for this event type
+        var webhookUrl = GetWebhookUrlForEventType(eventType, groupId);
+        bool configured = !string.IsNullOrWhiteSpace(webhookUrl);
+        
         Console.WriteLine($"[DISCORD] SendAuditEventAsync called - EventType: {type} (raw: {eventType}), IsConfigured: {configured}");
         
         if (!configured)
         {
-            Console.WriteLine($"[DISCORD] Webhook not configured, skipping notification");
+            Console.WriteLine($"[DISCORD] Webhook not configured for this event type, skipping notification");
             return false;
         }
         
@@ -453,5 +469,116 @@ public class DiscordWebhookService : IDiscordWebhookService
         }
         
         return await SendMessageAsync($"{emoji} {title}", desc.ToString(), color, null, groupId);
+    }
+    
+    /// <summary>
+    /// Extract event type from title for webhook routing
+    /// </summary>
+    private string? ExtractEventTypeFromTitle(string title)
+    {
+        var lower = title.ToLowerInvariant();
+        
+        // Member events
+        if (lower.Contains("joined")) return "group.user.join";
+        if (lower.Contains("left")) return "group.user.leave";
+        if (lower.Contains("kicked")) return "group.user.kick";
+        if (lower.Contains("banned") && !lower.Contains("unbanned")) return "group.user.ban";
+        if (lower.Contains("unbanned")) return "group.user.unban";
+        if (lower.Contains("role added")) return "group.user.role.add";
+        if (lower.Contains("role removed")) return "group.user.role.remove";
+        
+        // Role events
+        if (lower.Contains("role created")) return "group.role.create";
+        if (lower.Contains("role updated")) return "group.role.update";
+        if (lower.Contains("role deleted")) return "group.role.delete";
+        
+        // Instance events
+        if (lower.Contains("instance created")) return "group.instance.create";
+        if (lower.Contains("instance deleted")) return "group.instance.delete";
+        if (lower.Contains("instance opened")) return "group.instance.open";
+        if (lower.Contains("instance closed")) return "group.instance.close";
+        if (lower.Contains("instance warning")) return "group.instance.warn";
+        
+        // Group events
+        if (lower.Contains("group updated")) return "group.update";
+        
+        // Invite events
+        if (lower.Contains("join request")) return "group.request.create";
+        if (lower.Contains("invite sent")) return "group.invite.create";
+        if (lower.Contains("invite accepted")) return "group.invite.accept";
+        if (lower.Contains("invite rejected")) return "group.invite.reject";
+        
+        // Announcement events
+        if (lower.Contains("announcement posted")) return "group.announcement.create";
+        if (lower.Contains("announcement deleted")) return "group.announcement.delete";
+        
+        // Gallery events
+        if (lower.Contains("gallery item added")) return "group.gallery.create";
+        if (lower.Contains("gallery item removed")) return "group.gallery.delete";
+        
+        // Post events
+        if (lower.Contains("post created")) return "group.post.create";
+        if (lower.Contains("post deleted")) return "group.post.delete";
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the appropriate webhook URL for a specific event type
+    /// </summary>
+    public string? GetWebhookUrlForEventType(string eventType, string? groupId = null)
+    {
+        if (string.IsNullOrEmpty(groupId))
+            return _settingsService.Settings.DiscordWebhookUrl;
+            
+        var groupConfig = _settingsService.GetGroupConfig(groupId);
+        if (groupConfig == null)
+            return null;
+            
+        var type = eventType.ToLowerInvariant();
+        if (type.StartsWith("group.member.")) 
+            type = type.Replace("group.member.", "group.user.");
+            
+        // Determine webhook based on event category
+        string? categoryWebhook = null;
+        
+        if (type.StartsWith("group.user.") || type.Contains("join") || type.Contains("leave") || 
+            type.Contains("kick") || type.Contains("ban") || type.Contains("unban"))
+        {
+            categoryWebhook = groupConfig.DiscordWebhookMemberEvents;
+        }
+        else if (type.Contains("role."))
+        {
+            categoryWebhook = groupConfig.DiscordWebhookRoleEvents;
+        }
+        else if (type.Contains("instance."))
+        {
+            categoryWebhook = groupConfig.DiscordWebhookInstanceEvents;
+        }
+        else if (type == "group.update")
+        {
+            categoryWebhook = groupConfig.DiscordWebhookGroupEvents;
+        }
+        else if (type.Contains("invite") || type.Contains("request") || type.Contains("joinrequest"))
+        {
+            categoryWebhook = groupConfig.DiscordWebhookInviteEvents;
+        }
+        else if (type.Contains("announcement"))
+        {
+            categoryWebhook = groupConfig.DiscordWebhookAnnouncementEvents;
+        }
+        else if (type.Contains("gallery"))
+        {
+            categoryWebhook = groupConfig.DiscordWebhookGalleryEvents;
+        }
+        else if (type.Contains("post"))
+        {
+            categoryWebhook = groupConfig.DiscordWebhookPostEvents;
+        }
+        
+        // If category-specific webhook is set, use it; otherwise fall back to legacy webhook
+        return !string.IsNullOrWhiteSpace(categoryWebhook) 
+            ? categoryWebhook 
+            : groupConfig.DiscordWebhookUrl;
     }
 }

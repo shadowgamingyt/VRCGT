@@ -216,20 +216,21 @@
                   HeadersVisibility="Column"
                   CanUserAddRows="False"
                   CanUserDeleteRows="False"
+                  CanUserSortColumns="True"
                   IsReadOnly="True"
                   Background="#1f1f1f"
                   RowBackground="#2b2b2b"
                   AlternatingRowBackground="#242424"
                   Foreground="White">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Display Name" Binding="{Binding DisplayName}" Width="*"/>
-                <DataGridTextColumn Header="User ID" Binding="{Binding UserId}" Width="2*"/>
-                <DataGridTextColumn Header="Ban Type" Binding="{Binding BanTypeDisplay}" Width="*"/>
-                <DataGridTextColumn Header="Status" Binding="{Binding MembershipDisplay}" Width="*"/>
-                <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="2*"/>
-                <DataGridTextColumn Header="Banned At" Binding="{Binding BannedAt}" Width="*"/>
-                <DataGridTextColumn Header="Expires" Binding="{Binding ExpiresAt}" Width="*"/>
-                <DataGridTemplateColumn Header="Actions" Width="120">
+                <DataGridTextColumn Header="Display Name" Binding="{Binding DisplayName}" Width="*" CanUserSort="True"/>
+                <DataGridTextColumn Header="User ID" Binding="{Binding UserId}" Width="2*" CanUserSort="True"/>
+                <DataGridTextColumn Header="Ban Type" Binding="{Binding BanTypeDisplay}" Width="*" CanUserSort="True"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding MembershipDisplay}" Width="*" CanUserSort="True"/>
+                <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="2*" CanUserSort="True"/>
+                <DataGridTextColumn Header="Banned At" Binding="{Binding BannedAt}" Width="*" CanUserSort="True" SortMemberPath="BannedAtDateTime"/>
+                <DataGridTextColumn Header="Expires" Binding="{Binding ExpiresAt}" Width="*" CanUserSort="True"/>
+                <DataGridTemplateColumn Header="Actions" Width="120" CanUserSort="False">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <Button Content="Unban"

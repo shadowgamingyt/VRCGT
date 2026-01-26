@@ -85,26 +85,34 @@ public class DatabaseService : IDatabaseService
     {
         try
         {
-            // Check if DiscordSentAt column exists in AuditLogs table
             var connection = context.Database.GetDbConnection();
-            await connection.OpenAsync();
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync();
+            }
             
             using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA table_info(AuditLogs)";
             
             var hasDiscordSentAt = false;
+            var hasInstanceId = false;
+            var hasWorldName = false;
+            
             using (var reader = await command.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
                 {
                     var columnName = reader.GetString(1); // Column name is at index 1
                     if (columnName == "DiscordSentAt")
-                    {
                         hasDiscordSentAt = true;
-                        break;
-                    }
+                    else if (columnName == "InstanceId")
+                        hasInstanceId = true;
+                    else if (columnName == "WorldName")
+                        hasWorldName = true;
                 }
             }
+            
+            Console.WriteLine($"[DATABASE] Schema check - DiscordSentAt: {hasDiscordSentAt}, InstanceId: {hasInstanceId}, WorldName: {hasWorldName}");
             
             // Add DiscordSentAt column if it doesn't exist
             if (!hasDiscordSentAt)
@@ -114,6 +122,26 @@ public class DatabaseService : IDatabaseService
                 alterCommand.CommandText = "ALTER TABLE AuditLogs ADD COLUMN DiscordSentAt TEXT NULL";
                 await alterCommand.ExecuteNonQueryAsync();
                 Console.WriteLine("[DATABASE] DiscordSentAt column added successfully");
+            }
+            
+            // Add InstanceId column if it doesn't exist
+            if (!hasInstanceId)
+            {
+                Console.WriteLine("[DATABASE] Adding InstanceId column to AuditLogs table...");
+                using var alterCommand = connection.CreateCommand();
+                alterCommand.CommandText = "ALTER TABLE AuditLogs ADD COLUMN InstanceId TEXT NULL";
+                await alterCommand.ExecuteNonQueryAsync();
+                Console.WriteLine("[DATABASE] InstanceId column added successfully");
+            }
+            
+            // Add WorldName column if it doesn't exist
+            if (!hasWorldName)
+            {
+                Console.WriteLine("[DATABASE] Adding WorldName column to AuditLogs table...");
+                using var alterCommand = connection.CreateCommand();
+                alterCommand.CommandText = "ALTER TABLE AuditLogs ADD COLUMN WorldName TEXT NULL";
+                await alterCommand.ExecuteNonQueryAsync();
+                Console.WriteLine("[DATABASE] WorldName column added successfully");
             }
 
             // Ensure MemberBackups table exists (older databases won't have it)
@@ -153,8 +181,10 @@ CREATE INDEX IF NOT EXISTS IX_MemberBackups_WasReInvited ON MemberBackups(WasReI
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DATABASE] Schema migration error: {ex.Message}");
-            // Don't throw - allow app to continue
+            Console.WriteLine($"[DATABASE] CRITICAL - Schema migration error: {ex.Message}");
+            Console.WriteLine($"[DATABASE] Stack trace: {ex.StackTrace}");
+            // Rethrow to prevent app from continuing with incompatible schema
+            throw new InvalidOperationException("Failed to migrate database schema. Please check the error log.", ex);
         }
     }
 
@@ -215,6 +245,9 @@ CREATE INDEX IF NOT EXISTS IX_MemberBackups_WasReInvited ON MemberBackups(WasReI
 
     public async Task<int> SaveAuditLogsAsync(IEnumerable<AuditLogEntity> logs)
     {
+        // Ensure database is initialized with latest schema
+        await InitializeAsync();
+        
         using var context = new AppDbContext();
         var saved = 0;
 
