@@ -1,2 +1,0 @@
-C:\Users\kille\VRCGT\src\bin\Publish\VRCGroupTools.pdb
-C:\Users\kille\VRCGT\src\bin\Publish\VRCGroupTools.exe

@@ -1,6 +1,3 @@
-Detatched from repository to work on it faster with programs,   original repository fork https://github.com/shadowgamingyt/VRCGT which is forked from https://github.com/0xE69/VRCGT
-
-
 # VRCGT - VRChat Group Tools
 
 A powerful desktop toolkit for VRChat group owners and moderators. Fast login, rich group insights, member management, posts, calendar events, invites, audit logs, Discord webhooks, and more—all in one modern WPF app.
