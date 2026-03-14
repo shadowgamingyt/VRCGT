@@ -38,7 +38,6 @@ public class AuditLogService : IAuditLogService, IDisposable
     private readonly IDiscordWebhookService _discordService;
     private readonly ISecurityMonitorService? _securityMonitor;
     private readonly ISettingsService _settingsService;
-
     private Timer? _pollingTimer;
     private string? _currentGroupId;
     private bool _isPolling;
@@ -48,6 +47,9 @@ public class AuditLogService : IAuditLogService, IDisposable
     // Prevent overlapping polls (timer can tick while previous poll is still running)
     private readonly SemaphoreSlim _pollLock = new(1, 1);
 
+    // Only apply max-age filter on first poll to prevent startup backlog spam
+    private bool _initialPollComplete = false;
+
     public event EventHandler<List<AuditLogEntry>>? NewLogsReceived;
     public event EventHandler<string>? StatusChanged;
     public event EventHandler<FetchProgressEventArgs>? FetchProgressChanged;
@@ -55,12 +57,7 @@ public class AuditLogService : IAuditLogService, IDisposable
     public bool IsPolling => _isPolling;
     public int TotalLogCount => _totalLogCount;
 
-    public AuditLogService(
-        IVRChatApiService apiService,
-        ICacheService cacheService,
-        IDiscordWebhookService discordService,
-        ISettingsService settingsService,
-        ISecurityMonitorService? securityMonitor = null)
+    public AuditLogService(IVRChatApiService apiService, ICacheService cacheService, IDiscordWebhookService discordService, ISettingsService settingsService, ISecurityMonitorService? securityMonitor = null)
     {
         _apiService = apiService;
         _cacheService = cacheService;
@@ -74,10 +71,12 @@ public class AuditLogService : IAuditLogService, IDisposable
         Console.WriteLine($"[AUDIT-SVC] StartPollingAsync called for group: {groupId}");
         _currentGroupId = groupId;
 
+        // Get count from database
         _totalLogCount = await _cacheService.GetAuditLogCountAsync(groupId);
         Console.WriteLine($"[AUDIT-SVC] Database has {_totalLogCount} cached audit logs for this group");
         StatusChanged?.Invoke(this, $"Loading {_totalLogCount} cached logs from database...");
 
+        // Load cached logs and notify UI
         var cachedLogs = await _cacheService.LoadAuditLogsAsync(groupId);
         Console.WriteLine($"[AUDIT-SVC] Loaded {cachedLogs.Count} logs from cache");
 
@@ -91,6 +90,10 @@ public class AuditLogService : IAuditLogService, IDisposable
             StatusChanged?.Invoke(this, "No cached logs. Click 'Fetch History' to download.");
         }
 
+        // Don't send unsent logs on initial load - only send newly fetched logs going forward
+        // This prevents spamming Discord with old logs when app starts
+
+        // Start polling timer with configurable interval
         var pollingIntervalMs = _settingsService.Settings.AuditLogPollingIntervalSeconds * 1000;
         _pollingTimer?.Dispose();
         _pollingTimer = new Timer(pollingIntervalMs);
@@ -99,6 +102,7 @@ public class AuditLogService : IAuditLogService, IDisposable
         _pollingTimer.Start();
         _isPolling = true;
 
+        // Do an initial poll
         Console.WriteLine("[AUDIT-SVC] Starting initial poll...");
         await PollForNewLogsAsync();
 
@@ -158,99 +162,119 @@ public class AuditLogService : IAuditLogService, IDisposable
             Console.WriteLine($"[AUDIT-SVC] Polling VRChat API for new audit logs (group: {_currentGroupId})...");
             StatusChanged?.Invoke(this, "🔍 Checking VRChat API for new audit logs...");
 
-            // Load existing IDs once for dedup
+            // Get existing log IDs before fetch
             var existingLogs = await _cacheService.LoadAuditLogsAsync(_currentGroupId);
             var existingIds = new HashSet<string>(existingLogs.Select(l => l.Id));
 
-            // Fetch latest N logs
-            var apiLogs = await FetchLogsFromApiAsync(100);
-            Console.WriteLine($"[AUDIT-SVC] API returned {apiLogs.Count} log entries");
+            var newLogs = await FetchLogsFromApiAsync(100); // Get latest 100
+            Console.WriteLine($"[AUDIT-SVC] API returned {newLogs.Count} log entries");
 
-            if (apiLogs.Count == 0)
+            if (newLogs.Count > 0)
             {
-                Console.WriteLine("[AUDIT-SVC] API returned 0 logs (may be rate limited or no logs)");
+                // Normalize event types so toggles match
+                foreach (var l in newLogs)
+                    l.EventType = NormalizeEventType(l.EventType);
+
+                // New unique logs (not already in DB)
+                var newUnique = newLogs.Where(l => !existingIds.Contains(l.Id)).ToList();
+
+                // On the FIRST poll only, apply max age filter to prevent backlog spam
+                List<AuditLogEntry> sendCandidates;
+                if (!_initialPollComplete)
+                {
+                    var maxAgeMinutes = _settingsService.Settings.AuditLogDiscordNotificationMaxAgeMinutes;
+                    var cutoffTime = DateTime.UtcNow.AddMinutes(-maxAgeMinutes);
+                    sendCandidates = newUnique.Where(l => l.CreatedAt >= cutoffTime).ToList();
+
+                    Console.WriteLine($"[AUDIT-SVC] Initial poll: {sendCandidates.Count} within last {maxAgeMinutes} minutes (filtered from {newUnique.Count} new unique logs)");
+                }
+                else
+                {
+                    // After initial poll: send all new unique logs (prevents missing delayed events)
+                    sendCandidates = newUnique;
+                    Console.WriteLine($"[AUDIT-SVC] New unique logs (not in DB): {newUnique.Count}");
+                }
+
+                var savedCount = await _cacheService.AppendAuditLogsAsync(_currentGroupId, newLogs);
+                _totalLogCount = await _cacheService.GetAuditLogCountAsync(_currentGroupId);
+                Console.WriteLine($"[AUDIT-SVC] Saved {savedCount} new entries (duplicates skipped). Total in DB: {_totalLogCount}");
+
+                // Group-aware configured check (fix)
+                bool discordConfigured = _discordService.IsConfiguredForGroup(_currentGroupId);
+                Console.WriteLine($"[AUDIT-SVC] Send candidates: {sendCandidates.Count}, Discord configured for group: {discordConfigured}");
+
+                if (sendCandidates.Count > 0 && discordConfigured)
+                {
+                    Console.WriteLine($"[AUDIT-SVC] Sending {sendCandidates.Count} Discord notifications...");
+                    int attempted = 0;
+                    int sentOk = 0;
+                    int skippedDisabled = 0;
+                    var sentLogIds = new List<string>();
+
+                    foreach (var log in sendCandidates)
+                    {
+                        attempted++;
+
+                        // Respect toggles here so disabled events don't retry forever
+                        if (!_discordService.ShouldSendAuditEvent(log.EventType, _currentGroupId))
+                        {
+                            skippedDisabled++;
+                            sentLogIds.Add(log.Id);
+                            Console.WriteLine($"[AUDIT-SVC] Skipping disabled event type '{log.EventType}' ({attempted}/{sendCandidates.Count})");
+                            continue;
+                        }
+
+                        Console.WriteLine($"[AUDIT-SVC] Processing {attempted}/{sendCandidates.Count}: EventType={log.EventType}, Actor={log.ActorName}");
+                        var success = await SendDiscordNotificationAsync(log);
+
+                        if (success)
+                        {
+                            sentOk++;
+                            sentLogIds.Add(log.Id);
+                        }
+
+                        await Task.Delay(500); // Rate limit
+                    }
+
+                    // Mark sent OR intentionally skipped (so they don't retry forever)
+                    if (sentLogIds.Count > 0)
+                    {
+                        await _cacheService.MarkLogsAsSentToDiscordAsync(sentLogIds);
+                        Console.WriteLine($"[AUDIT-SVC] Marked {sentLogIds.Count} logs as sent/skipped for Discord (Sent={sentOk}, Skipped={skippedDisabled})");
+                    }
+
+                    Console.WriteLine($"[AUDIT-SVC] Completed Discord loop. Attempted={attempted}, Sent={sentOk}, SkippedDisabled={skippedDisabled}");
+                }
+                else if (sendCandidates.Count > 0 && !discordConfigured)
+                {
+                    Console.WriteLine($"[AUDIT-SVC] Discord webhook not configured for group - skipping {sendCandidates.Count} notifications");
+                }
+                else
+                {
+                    Console.WriteLine("[AUDIT-SVC] No send candidates to send to Discord");
+                }
+
+                // Reload from database and notify
+                var allLogs = await _cacheService.LoadAuditLogsAsync(_currentGroupId);
+                NewLogsReceived?.Invoke(this, allLogs);
+
+                if (savedCount > 0)
+                {
+                    StatusChanged?.Invoke(this, $"✓ Found {savedCount} new entries | Total: {_totalLogCount} logs");
+                }
+                else
+                {
+                    StatusChanged?.Invoke(this, $"✓ Up to date | Total: {_totalLogCount} logs");
+                }
+
+                // After first successful cycle, mark initial poll complete
+                _initialPollComplete = true;
+            }
+            else
+            {
+                Console.WriteLine("[AUDIT-SVC] API returned 0 logs (may be rate limited or no new logs)");
                 StatusChanged?.Invoke(this, $"✓ No new logs from API | Total: {_totalLogCount} logs");
-                return;
             }
-
-            // Normalize event types to match your settings/webhook routing
-            foreach (var l in apiLogs)
-                l.EventType = NormalizeEventType(l.EventType);
-
-            // Identify new unique logs (DO NOT time-filter sending here)
-            var newUniqueLogs = apiLogs.Where(l => !existingIds.Contains(l.Id)).ToList();
-            Console.WriteLine($"[AUDIT-SVC] New unique logs (not in DB): {newUniqueLogs.Count}");
-
-            // Save all fetched logs (cache service will skip duplicates)
-            var savedCount = await _cacheService.AppendAuditLogsAsync(_currentGroupId, apiLogs);
-            _totalLogCount = await _cacheService.GetAuditLogCountAsync(_currentGroupId);
-            Console.WriteLine($"[AUDIT-SVC] Saved {savedCount} new entries (duplicates skipped). Total in DB: {_totalLogCount}");
-
-            // Discord send decision must be group-aware
-            bool discordConfigured = _discordService.IsConfiguredForGroup(_currentGroupId);
-            Console.WriteLine($"[AUDIT-SVC] Discord configured for group: {discordConfigured}");
-
-            // Only attempt to send if there are new unique logs
-            if (newUniqueLogs.Count > 0 && discordConfigured)
-            {
-                Console.WriteLine($"[AUDIT-SVC] Attempting to send {newUniqueLogs.Count} Discord notifications...");
-                int attempted = 0;
-                int sentOk = 0;
-                int skippedDisabled = 0;
-                var sentLogIds = new List<string>();
-
-                foreach (var log in newUniqueLogs.OrderBy(l => l.CreatedAt))
-                {
-                    attempted++;
-
-                    // Respect per-event toggle
-                    if (!_discordService.ShouldSendAuditEvent(log.EventType, _currentGroupId))
-                    {
-                        skippedDisabled++;
-                        // Mark as sent so it doesn't retry forever if disabled
-                        sentLogIds.Add(log.Id);
-                        Console.WriteLine($"[AUDIT-SVC] Skipping disabled event type '{log.EventType}' ({attempted}/{newUniqueLogs.Count})");
-                        continue;
-                    }
-
-                    Console.WriteLine($"[AUDIT-SVC] Sending {attempted}/{newUniqueLogs.Count}: EventType={log.EventType}, Actor={log.ActorName}");
-                    var success = await SendDiscordNotificationAsync(log);
-
-                    if (success)
-                    {
-                        sentOk++;
-                        sentLogIds.Add(log.Id);
-                    }
-
-                    // basic rate limit spacing
-                    await Task.Delay(500);
-                }
-
-                if (sentLogIds.Count > 0)
-                {
-                    await _cacheService.MarkLogsAsSentToDiscordAsync(sentLogIds);
-                    Console.WriteLine($"[AUDIT-SVC] Marked {sentLogIds.Count} logs as sent/skipped for Discord");
-                }
-
-                Console.WriteLine($"[AUDIT-SVC] Discord send done. Attempted={attempted}, Sent={sentOk}, SkippedDisabled={skippedDisabled}");
-            }
-            else if (newUniqueLogs.Count > 0 && !discordConfigured)
-            {
-                Console.WriteLine($"[AUDIT-SVC] Discord not configured for group - skipping {newUniqueLogs.Count} new notifications");
-            }
-            else
-            {
-                Console.WriteLine("[AUDIT-SVC] No new unique logs to notify");
-            }
-
-            // Reload and notify UI
-            var allLogs = await _cacheService.LoadAuditLogsAsync(_currentGroupId);
-            NewLogsReceived?.Invoke(this, allLogs);
-
-            if (savedCount > 0)
-                StatusChanged?.Invoke(this, $"✓ Found {savedCount} new entries | Total: {_totalLogCount} logs");
-            else
-                StatusChanged?.Invoke(this, $"✓ Up to date | Total: {_totalLogCount} logs");
         }
         catch (Exception ex)
         {
@@ -302,9 +326,7 @@ public class AuditLogService : IAuditLogService, IDisposable
             }
             else
             {
-                foreach (var l in logs)
-                    l.EventType = NormalizeEventType(l.EventType);
-
+                // Save to database immediately
                 var savedCount = await _cacheService.AppendAuditLogsAsync(_currentGroupId, logs);
                 totalSaved += savedCount;
                 allNewLogs.AddRange(logs);
@@ -328,8 +350,8 @@ public class AuditLogService : IAuditLogService, IDisposable
         _totalLogCount = await _cacheService.GetAuditLogCountAsync(_currentGroupId);
         Console.WriteLine($"[AUDIT-SVC] Historical fetch complete: {allNewLogs.Count} fetched from {page} pages, {totalSaved} new entries saved");
 
-        var allLogsReload = await _cacheService.LoadAuditLogsAsync(_currentGroupId);
-        NewLogsReceived?.Invoke(this, allLogsReload);
+        var allLogs = await _cacheService.LoadAuditLogsAsync(_currentGroupId);
+        NewLogsReceived?.Invoke(this, allLogs);
 
         StatusChanged?.Invoke(this, $"✓ Complete! Fetched {page} pages, saved {totalSaved} new | Total: {_totalLogCount} logs");
 
@@ -361,7 +383,7 @@ public class AuditLogService : IAuditLogService, IDisposable
             }
             else
             {
-                Console.WriteLine("[AUDIT-SVC] API Response: No 'results' property or empty response");
+                Console.WriteLine($"[AUDIT-SVC] API Response: No 'results' property or empty response");
             }
         }
         catch (Exception ex)
@@ -376,15 +398,17 @@ public class AuditLogService : IAuditLogService, IDisposable
     {
         try
         {
-            var rawJson = entry.GetRawText();
-
             var eventTypeRaw = entry.TryGetProperty("eventType", out var et) ? et.GetString() ?? "unknown" : "unknown";
             var eventType = NormalizeEventType(eventTypeRaw);
 
+            var rawJson = entry.GetRawText();
             var idValue = entry.TryGetProperty("id", out var id) ? id.GetString() : null;
             if (string.IsNullOrWhiteSpace(idValue))
+            {
                 idValue = ComputeAuditLogId(rawJson);
+            }
 
+            // Parse created_at robustly as UTC
             DateTime createdUtc = DateTime.UtcNow;
             if (entry.TryGetProperty("created_at", out var createdAt))
             {
@@ -460,19 +484,36 @@ public class AuditLogService : IAuditLogService, IDisposable
         }
     }
 
+    // ✅ Minimal normalization mapping to make toggles match real VRChat event variants
     private static string NormalizeEventType(string eventType)
     {
         var t = (eventType ?? "unknown").Trim();
 
-        // normalize casing + common variants
         t = t.Replace("group.joinRequest", "group.joinrequest", StringComparison.OrdinalIgnoreCase);
 
-        // map known legacy/alt names to what your Discord settings expect
         if (t.Equals("group.user.join_request", StringComparison.OrdinalIgnoreCase))
             t = "group.request.create";
 
         if (t.StartsWith("group.member.", StringComparison.OrdinalIgnoreCase))
             t = t.Replace("group.member.", "group.user.", StringComparison.OrdinalIgnoreCase);
+
+        if (t.Equals("group.user.role.assign", StringComparison.OrdinalIgnoreCase))
+            t = "group.user.role.add";
+
+        if (t.Equals("group.user.role.unassign", StringComparison.OrdinalIgnoreCase))
+            t = "group.user.role.remove";
+
+        if (t.Equals("group.member.role.assign", StringComparison.OrdinalIgnoreCase))
+            t = "group.user.role.add";
+
+        if (t.Equals("group.member.role.unassign", StringComparison.OrdinalIgnoreCase))
+            t = "group.user.role.remove";
+
+        if (t.Equals("group.user.remove", StringComparison.OrdinalIgnoreCase))
+            t = "group.user.kick";
+
+        if (t.Equals("group.member.remove", StringComparison.OrdinalIgnoreCase))
+            t = "group.user.kick";
 
         return t.ToLowerInvariant();
     }
@@ -491,14 +532,16 @@ public class AuditLogService : IAuditLogService, IDisposable
             "group.user.unban" => $"{actor} unbanned {target}",
             "group.user.role.add" => $"{actor} added a role to {target}",
             "group.user.role.remove" => $"{actor} removed a role from {target}",
-            "group.request.create" or "group.joinrequest" => $"{target} requested to join the group",
+            "group.user.join_request" => $"{target} requested to join the group",
+            "group.joinRequest" => $"{target} requested to join the group",
             "group.role.create" => $"{actor} created a new role",
             "group.role.update" => $"{actor} updated a role",
             "group.role.delete" => $"{actor} deleted a role",
             "group.update" => $"{actor} updated group settings",
             "group.announcement.create" => $"{actor} created an announcement",
             "group.announcement.delete" => $"{actor} deleted an announcement",
-            "group.invite.create" or "group.user.invite" => $"{actor} invited {target}",
+            "group.invite.create" => $"{actor} invited {target}",
+            "group.user.invite" => $"{actor} invited {target}",
             "group.invite.accept" => $"{target} accepted an invite",
             "group.invite.reject" => $"{target} rejected an invite",
             "group.instance.create" => $"{actor} created a group instance",
@@ -532,7 +575,7 @@ public class AuditLogService : IAuditLogService, IDisposable
     {
         try
         {
-            // IMPORTANT: do not cast to DiscordWebhookService (DI may provide another implementation)
+            // DI-safe: do not cast, call through interface
             return await _discordService.SendAuditEventAsync(
                 log.EventType,
                 log.ActorName ?? "Unknown",
@@ -567,7 +610,6 @@ public class AuditLogService : IAuditLogService, IDisposable
         }
     }
 
-    // Existing unsent sender remains unchanged
     private async Task SendUnsentDiscordLogsAsync()
     {
         if (string.IsNullOrEmpty(_currentGroupId))
@@ -774,13 +816,7 @@ public class AuditLogService : IAuditLogService, IDisposable
                 actionType,
                 log.TargetId,
                 log.TargetName,
-                new
-                {
-                    EventType = log.EventType,
-                    Timestamp = log.CreatedAt,
-                    IsInstanceAction = isInstanceAction,
-                    IsPreemptiveBan = isPreemptiveBan
-                }
+                new { EventType = log.EventType, Timestamp = log.CreatedAt, IsInstanceAction = isInstanceAction, IsPreemptiveBan = isPreemptiveBan }
             );
         }
     }
